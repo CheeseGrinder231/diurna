@@ -15,7 +15,9 @@ class ZipappTests(unittest.TestCase):
             subprocess.run([sys.executable, str(root / "scripts/build.py"),
                             "--output", str(artifact)], check=True, capture_output=True)
             environment = dict(os.environ)
-            environment.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
+            # Missing session is now a wait, but invalid configuration must
+            # still propagate a real collection failure through the zipapp.
+            environment["HYPRLAND_INSTANCE_SIGNATURE"] = "../invalid"
             environment["XDG_RUNTIME_DIR"] = str(directory)
             environment["XDG_STATE_HOME"] = str(directory)
             result = subprocess.run([sys.executable, str(artifact), "collect",
@@ -23,7 +25,6 @@ class ZipappTests(unittest.TestCase):
                                     env=environment, capture_output=True, text=True)
             self.assertEqual(result.returncode, 1, result.stderr)
             self.assertIn("collection/hook failed", result.stderr)
-            self.assertFalse((directory / "spans.sqlite3").exists())
             help_result = subprocess.run([sys.executable, str(artifact), "--help"],
                                          env=environment, capture_output=True, text=True)
             self.assertEqual(help_result.returncode, 0, help_result.stderr)

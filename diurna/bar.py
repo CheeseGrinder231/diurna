@@ -8,6 +8,7 @@ import select
 import sqlite3
 
 from .today import SECOND
+from .config import policy
 
 TOOLTIP_APPS = 5
 VIEW_ROWS = 10
@@ -39,7 +40,7 @@ def row_duration(ns):
 
 STATE_LABELS = {
     "idle": "idle", "locked": "locked", "suspended": "asleep",
-    "unknown": "unknown (collector stopped)",
+    "unknown": "unknown (collector unavailable)",
     "disconnected": "unknown (Hyprland disconnected)",
     "not_recorded": "not recorded (Diurna not running)",
 }
@@ -81,12 +82,19 @@ def bar(summary):
     if away:
         lines.append(" · ".join(away))
     classes = ["diurna"] + ([] if summary["active_ns"] else ["empty"])
+    saved = next((row for row in reversed(summary["timeline"])
+                  if row["state"] != "pending"), None)
+    stale_ns = max(STALE_NS, 2 * policy()["safety_seconds"] * SECOND)
+    if summary["pending_ns"] >= stale_ns or (saved and saved["state"] in ("unknown", "disconnected")):
+        lines.append("Diurna: not recording; check diurna.service or the Hyprland session")
+        return {"text": total + " · not recording", "tooltip": "\n".join(lines),
+                "class": classes + ["unavailable"], "alt": "unavailable"}
     return {"text": total, "tooltip": "\n".join(lines), "class": classes,
             "alt": "empty" if "empty" in classes else "tracking"}
 
 
 def unavailable():
-    return {"text": "–", "tooltip": "Diurna: screen time unavailable",
+    return {"text": "not recording", "tooltip": "Diurna: screen time unavailable; check diurna.service",
             "class": ["diurna", "unavailable"], "alt": "unavailable"}
 
 

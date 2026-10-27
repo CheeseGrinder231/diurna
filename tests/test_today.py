@@ -147,7 +147,7 @@ class TodayTests(unittest.TestCase):
             "  08:05–10:00   1h 55m  firefox · ws 2",
             "  10:00–10:15      15m  idle",
             "  10:15–11:40   1h 25m  code · ws 3",
-            "  11:40–12:00      20m  unknown (collector stopped)",
+            "  11:40–12:00      20m  unknown (collector unavailable)",
             "  12:00–13:00    1h 0m  firefox · ws web",
             "  13:00–13:20      20m  slack · ws 4",
             "  13:20–13:35      15m  spotify · ws 5",
@@ -180,6 +180,24 @@ class TodayTests(unittest.TestCase):
                 redirect_stdout(stream):
             self.assertEqual(main(), 0)
         self.assertEqual(json.loads(stream.getvalue()), bar.unavailable())
+
+    def test_bar_warns_for_waiting_or_stopped_collection_and_recovers(self):
+        for reason in ("unknown", "disconnected"):
+            waiting = [(0, MINUTE, "", "", reason, None)]
+            module = bar.bar(today.summarize(waiting, 0, MINUTE + SECOND))
+            self.assertIn("not recording", module["text"])
+            self.assertEqual(module["alt"], "unavailable")
+            recovered = waiting + [(MINUTE, 2 * MINUTE, "foot", "1", "active", None)]
+            module = bar.bar(today.summarize(recovered, 0, 2 * MINUTE + SECOND))
+            self.assertEqual(module["text"], "1m")
+            self.assertEqual(module["alt"], "tracking")
+        stopped = [(0, MINUTE, "foot", "1", "active", None)]
+        module = bar.bar(today.summarize(stopped, 0, 3 * MINUTE))
+        self.assertIn("not recording", module["text"])
+        self.assertIn("unavailable", module["class"])
+        self.assertIn("not recording", bar.bar(today.summarize([], 0, 3 * MINUTE))["text"])
+        with patch.object(bar, "policy", return_value={"safety_seconds": 300}):
+            self.assertNotIn("not recording", bar.bar(today.summarize(stopped, 0, 3 * MINUTE))["text"])
 
     def test_timeline_fixture_days(self):
         for name, day in TIMELINES["days"].items():
