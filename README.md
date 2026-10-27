@@ -204,9 +204,25 @@ span is unknown/disconnected, or the unsaved tail reaches two minutes (twice the
 checkpoint interval if longer). This uses saved spans rather than probing the
 service. It clears when normal spans are saved again.
 Clicking the module opens `diurna today --watch` in Omarchy's floating terminal
-(`omarchy-launch-or-focus-tui --app-id=TUI.float`). The watch view redraws when
-the collector commits spans (inotify on `$XDG_RUNTIME_DIR/diurna/changed`), with a
-60-second net; Ctrl-C closes it.
+(`omarchy-launch-or-focus-tui --app-id=TUI.float`): a full-screen view with three
+tabs that fits its window, so the terminal itself never scrolls.
+
+- **Overview:** the state totals, a day strip from midnight to now (one cell per
+  slice, shaded by its main state: █ active, ▒ idle, ░ away (locked or asleep),
+  · not recorded) and the top five apps with bars.
+- **Timeline:** the rows above, opened scrolled to now. Here any row shorter than
+  the three-minute fold, idle and other states included, joins a neighbour by the
+  same rule, so a sub-second idle blip is not a `0s idle` row. A row whose
+  largest part holds less than half its time is mixed.
+- **Apps:** every app ranked with a bar; an app used on more than one workspace
+  lists them beneath it.
+
+Tab / Shift-Tab, ← / → or 1–3 switch tabs; ↑ / ↓, j / k, PgUp / PgDn, g / G
+scroll inside one; q or Esc closes. It uses curses on the alternate screen with
+the terminal's own palette colours, and redraws in place when the collector
+commits spans (inotify on `$XDG_RUNTIME_DIR/diurna/changed`), on resize, and on a
+60-second net. When stdin or stdout is not a terminal, `--watch` reprints the
+plain `diurna today` text instead; plain `diurna today` and `--json` are unchanged.
 
 After each batch of events that commits spans, the collector rewrites that change
 stamp and sends `SIGRTMIN+11` to the user's own `waybar` processes, so the Waybar
