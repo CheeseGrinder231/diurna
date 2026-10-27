@@ -1,0 +1,138 @@
+== Overview 80x24
+|Diurna · Sunday 2026-09-20 · updated 16:00                                      |
+|  Overview   Timeline   Apps                                                    |
+|                                                                                |
+|  █ Active       7h 40m   ▒ Idle            15m   ░ Locked           5m         |
+|  ░ Asleep       7h 30m   · Unknown         20m   · Not saved       10m         |
+|                                                                                |
+|  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░██████████▒██████··██████████████████·  |
+|  00:00                               08:00                              16:00  |
+|                                                                                |
+|  Top apps                                                                      |
+|  code      3h 25m  ██████████████████████████████████████████████████████████  |
+|  firefox   2h 55m  ██████████████████████████████████████████████████          |
+|  foot         30m  ████████                                                    |
+|  slack        20m  ██████                                                      |
+|  spotify      15m  ████                                                        |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|Tab ←→ 1-3 tabs · ↑↓ jk PgUp PgDn scroll · q quit                               |
+== Timeline 80x24
+|Diurna · Sunday 2026-09-20 · updated 16:00                                      |
+|  Overview   Timeline   Apps                                                    |
+|                                                                                |
+| █ 00:00–00:30      30m  foot · ws 1                                            |
+| ░ 00:30–08:00   7h 30m  asleep                                                 |
+| ░ 08:00–08:05       5m  locked                                                 |
+| █ 08:05–10:00   1h 55m  firefox · ws 2                                         |
+| ▒ 10:00–10:15      15m  idle                                                   |
+| █ 10:15–11:40   1h 25m  code · ws 3                                            |
+| · 11:40–12:00      20m  unknown (collector stopped)                            |
+| █ 12:00–13:00    1h 0m  firefox · ws web                                       |
+| █ 13:00–13:20      20m  slack · ws 4                                           |
+| █ 13:20–13:35      15m  spotify · ws 5                                         |
+| █ 13:35–13:45      10m  mpv · ws 5                                             |
+| █ 13:45–13:50       5m  (desktop) · ws 1                                       |
+| █ 13:50–15:50    2h 0m  code · ws 3                                            |
+| · 15:50–16:00      10m  not saved (is the collector running?)                  |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|Tab ←→ 1-3 tabs · ↑↓ jk PgUp PgDn scroll · q quit                               |
+== Apps 80x24
+|Diurna · Sunday 2026-09-20 · updated 16:00                                      |
+|  Overview   Timeline   Apps                                                    |
+|                                                                                |
+|  code        3h 25m  ████████████████████████████████████████████████████████  |
+|  firefox     2h 55m  ████████████████████████████████████████████████          |
+|    ws 2      1h 55m                                                            |
+|    ws web     1h 0m                                                            |
+|  foot           30m  ████████                                                  |
+|  slack          20m  █████                                                     |
+|  spotify        15m  ████                                                      |
+|  mpv            10m  ███                                                       |
+|  (desktop)       5m  █                                                         |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|                                                                                |
+|Tab ←→ 1-3 tabs · ↑↓ jk PgUp PgDn scroll · q quit                               |
+== Overview 60x20
+|Diurna · Sunday 2026-09-20 · updated 16:00                  |
+|  Overview   Timeline   Apps                                |
+|                                                            |
+|  █ Active       7h 40m   ▒ Idle            15m             |
+|  ░ Locked           5m   ░ Asleep       7h 30m             |
+|  · Unknown         20m   · Not saved       10m             |
+|                                                            |
+|  ██░░░░░░░░░░░░░░░░░░░░░░░░░░███████▒█████·█████████████·  |
+|  00:00                     08:00                    16:00  |
+|                                                            |
+|  Top apps                                                  |
+|  code      3h 25m  ██████████████████████████████████████  |
+|  firefox   2h 55m  ████████████████████████████████        |
+|  foot         30m  ██████                                  |
+|  slack        20m  ████                                    |
+|  spotify      15m  ███                                     |
+|                                                            |
+|                                                            |
+|                                                            |
+|Tab ←→ 1-3 tabs · ↑↓ jk PgUp PgDn scroll · q quit           |
+== Timeline 60x20
+|Diurna · Sunday 2026-09-20 · updated 16:00                  |
+|  Overview   Timeline   Apps                                |
+|                                                            |
+| █ 00:00–00:30      30m  foot · ws 1                        |
+| ░ 00:30–08:00   7h 30m  asleep                             |
+| ░ 08:00–08:05       5m  locked                             |
+| █ 08:05–10:00   1h 55m  firefox · ws 2                     |
+| ▒ 10:00–10:15      15m  idle                               |
+| █ 10:15–11:40   1h 25m  code · ws 3                        |
+| · 11:40–12:00      20m  unknown (collector stopped)        |
+| █ 12:00–13:00    1h 0m  firefox · ws web                   |
+| █ 13:00–13:20      20m  slack · ws 4                       |
+| █ 13:20–13:35      15m  spotify · ws 5                     |
+| █ 13:35–13:45      10m  mpv · ws 5                         |
+| █ 13:45–13:50       5m  (desktop) · ws 1                   |
+| █ 13:50–15:50    2h 0m  code · ws 3                        |
+| · 15:50–16:00      10m  not saved (is the collector runnin…|
+|                                                            |
+|                                                            |
+|Tab ←→ 1-3 tabs · ↑↓ jk PgUp PgDn scroll · q quit           |
+== Apps 60x20
+|Diurna · Sunday 2026-09-20 · updated 16:00                  |
+|  Overview   Timeline   Apps                                |
+|                                                            |
+|  code        3h 25m  ████████████████████████████████████  |
+|  firefox     2h 55m  ███████████████████████████████       |
+|    ws 2      1h 55m                                        |
+|    ws web     1h 0m                                        |
+|  foot           30m  █████                                 |
+|  slack          20m  ████                                  |
+|  spotify        15m  ███                                   |
+|  mpv            10m  ██                                    |
+|  (desktop)       5m  █                                     |
+|                                                            |
+|                                                            |
+|                                                            |
+|                                                            |
+|                                                            |
+|                                                            |
+|                                                            |
+|Tab ←→ 1-3 tabs · ↑↓ jk PgUp PgDn scroll · q quit           |

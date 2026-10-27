@@ -28,7 +28,7 @@ def main():
     day.add_argument("--database", type=Path, default=database())
     view = day.add_mutually_exclusive_group()
     view.add_argument("--json", action="store_true", help="machine-readable totals in ns")
-    view.add_argument("--watch", action="store_true", help="live view, redrawn on each change")
+    view.add_argument("--watch", action="store_true", help="live tabbed view, redrawn on each change")
     module = commands.add_parser("bar", help="Waybar custom-module JSON for today")
     module.add_argument("--database", type=Path, default=database())
     for name, verb in (("install", "add"), ("uninstall", "remove")):
@@ -52,9 +52,12 @@ def main():
         load = lambda: today(args.database, time.time_ns())  # noqa: E731
         try:
             if args.watch:
-                return bar.watch(load, sys.stdout.write,
-                                 lambda: datetime.now().strftime("%H:%M"),
-                                 bar.Watcher(bar.changes_directory()))
+                now_label = lambda: datetime.now().strftime("%H:%M")  # noqa: E731
+                watcher = bar.Watcher(bar.changes_directory())
+                if sys.stdin.isatty() and sys.stdout.isatty():
+                    from . import tui  # curses only for the terminal view
+                    return tui.run(load, now_label, watcher)
+                return bar.watch(load, sys.stdout.write, now_label, watcher)
             summary = load()
         except (OSError, ValueError, sqlite3.Error):
             print("diurna: cannot read stored spans", file=sys.stderr)

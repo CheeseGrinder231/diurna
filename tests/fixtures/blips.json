@@ -1,0 +1,23 @@
+{
+  "description": "A working day in milliseconds from local midnight, with sub-second blips of every state the timeline keeps as its own row: idle, a file picker, locked, asleep, a collector gap (not recorded), unknown, disconnected, and a 0.6 s focus between two idle stretches. Now is 20 s after the last committed span.",
+  "now": 45020000,
+  "spans": [
+    [28800000, 32400000, "code", "3", "active"],
+    [32400000, 32400400, "", "3", "idle"],
+    [32400400, 34200000, "code", "3", "active"],
+    [34200000, 34200300, "org.gnome.Nautilus", "3", "active"],
+    [34200300, 36000000, "code", "3", "active"],
+    [36000000, 36000200, "code", "3", "locked"],
+    [36000200, 37200000, "firefox", "2", "active"],
+    [37200000, 37200500, "firefox", "2", "suspended"],
+    [37201000, 38400000, "firefox", "2", "active"],
+    [38400000, 38400900, "", "", "unknown"],
+    [38400900, 39600000, "slack", "4", "active"],
+    [39600000, 39600250, "", "", "disconnected"],
+    [39600250, 41400000, "code", "3", "active"],
+    [41400000, 42300000, "code", "3", "idle"],
+    [42300000, 42300600, "foot", "1", "active"],
+    [42300600, 43200000, "foot", "1", "idle"],
+    [43200000, 45000000, "code", "3", "active"]
+  ]
+}

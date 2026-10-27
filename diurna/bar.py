@@ -90,30 +90,34 @@ def unavailable():
             "class": ["diurna", "unavailable"], "alt": "unavailable"}
 
 
-def _meter(value, largest, width=20):
+def meter(value, largest, width=20):
     if largest <= 0:
         return ""
     return "█" * max(1 if value else 0, round(width * value / largest))
 
 
-def render(summary, now_label=""):
+def state_totals(summary):
+    """(label, ns) per state; unknown, not recorded and a stale tail only when present."""
     states = summary["states"]
-    lines = [f"Diurna · today {summary['date'] or ''}"
-             + (f" · updated {now_label}" if now_label else ""), ""]
     rows = [("Active", states["active_ns"]), ("Idle", states["idle_ns"]),
             ("Locked", states["locked_ns"]), ("Asleep", states["suspended_ns"])]
-    rows += [(label, value) for label, value in (
+    return rows + [(label, value) for label, value in (
         ("Unknown", states["unknown_ns"] + states["disconnected_ns"]),
         ("Not recorded", summary["not_recorded_ns"]),
         ("Not saved", summary["pending_ns"] if summary["pending_ns"] >= STALE_NS else 0))
         if value]
-    lines += [f"  {label:<12}{duration(value):>8}" for label, value in rows]
+
+
+def render(summary, now_label=""):
+    lines = [f"Diurna · today {summary['date'] or ''}"
+             + (f" · updated {now_label}" if now_label else ""), ""]
+    lines += [f"  {label:<12}{duration(value):>8}" for label, value in state_totals(summary)]
     apps = summary["apps"][:VIEW_ROWS]
     largest = apps[0]["active_ns"] if apps else 0
     width = max((len(app_label(a["app_class"])) for a in apps), default=0)
     lines += ["", "Apps"]
     lines += [f"  {app_label(a['app_class']).ljust(width)}  {duration(a['active_ns']):>8}  "
-              f"{_meter(a['active_ns'], largest)}" for a in apps] or ["  (no active time yet)"]
+              f"{meter(a['active_ns'], largest)}" for a in apps] or ["  (no active time yet)"]
     windows = summary["windows"][:VIEW_ROWS]
     labels = [app_label(w["app_class"]) + f" · ws {w['workspace'] or '?'}"
               + (f" · {w['title']}" if w["title"] else "") for w in windows]

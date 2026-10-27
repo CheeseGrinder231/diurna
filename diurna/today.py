@@ -110,14 +110,49 @@ def timeline(spans, start_ns, end_ns):
     for state, group in groupby(pieces, key=lambda piece: piece[2]):
         group = list(group)
         if state == "active":
-            rows += [_row(state, row) for row in _fold(group)]
+            rows += [_row(state, row) for row in _fold(
+                [[start, end, {key: end - start}, 1] for start, end, _, key in group])]
         else:
             rows += [_row(state, [start, end, {}, 1]) for start, end, *_ in group]
     return rows
 
 
-def _fold(segments):
-    """Rows [start, end, {(app, workspace): ns}, segments] for one run of active time.
+def settle(timeline):
+    """Timeline rows for the tabbed view: no row shorter than FOLD_NS, when it has
+    a neighbour to join.
+
+    `timeline` keeps each idle, locked or unsaved stretch as its own row however
+    short, so a sub-second idle blip prints as `0s idle`. Here every row is a
+    part keyed (state, app, workspace) and the same fold applies across states.
+    A row is named by the part holding most of its time (`state`, `app_class`,
+    `workspace`), or is mixed (all three None). `parts` lists every part.
+    """
+    rows = []
+    for row in timeline:
+        if row["state"] == "active":
+            parts = {("active", a["app_class"], a["workspace"]): a["active_ns"]
+                     for a in row["apps"]}
+        else:
+            parts = {(row["state"], None, None): row["end_ns"] - row["start_ns"]}
+        rows.append([row["start_ns"], row["end_ns"], parts, row["switches"] + 1])
+    settled = []
+    for row in _fold(rows) if rows else []:
+        start, end, parts, segments = row
+        state, app, workspace = _key(row) or (None, None, None)
+        settled.append({
+            "start_ns": start, "end_ns": end, "state": state, "app_class": app,
+            "workspace": workspace, "switches": segments - 1,
+            "parts": [{"state": s, "app_class": a, "workspace": w, "ns": value}
+                      for (s, a, w), value in sorted(parts.items(), key=lambda item: (
+                          -item[1], tuple("" if part is None else part
+                                          for part in item[0])))],
+        })
+    return settled
+
+
+def _fold(rows):
+    """Fold rows [start, end, {key: ns}, segments] of one run; keys are
+    (app, workspace) in active time.
 
     The shortest row under FOLD_NS joins a neighbour, until none is left or the
     run is one row: all three when both neighbours are the same app, else the
@@ -127,7 +162,6 @@ def _fold(segments):
     rather than vanishing into the stay before it. Adjacent rows with the same
     app, or both mixed, then join.
     """
-    rows = [[start, end, {key: end - start}, 1] for start, end, _, key in segments]
     before = list(range(-1, len(rows) - 1))
     after = list(range(1, len(rows) + 1))
     after[-1] = -1
@@ -179,10 +213,11 @@ def _join(row, following):
 
 
 def _key(row):
-    """The (app, workspace) holding most of the row's time, or None if none does."""
+    """The key holding most of the row's time, or None if none does."""
     if not row[2]:
         return None
-    key, value = min(row[2].items(), key=lambda item: (-item[1], item[0]))
+    key, value = min(row[2].items(), key=lambda item: (
+        -item[1], tuple("" if part is None else part for part in item[0])))
     return key if 2 * value > _length(row) else None
 
 
