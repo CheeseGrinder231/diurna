@@ -1,0 +1,38 @@
+{
+  "description": "Synthetic recording in Hyprland socket2 wire format; seconds from a fake epoch. Paired focus events, workspace, monitor, open/close, idle, lock, suspend, recovery. Opening a window, the monitor focus event to the same workspace and refocusing the empty desktop change nothing, so they extend the span.",
+  "initial": [{"class": "foot", "address": "0xaa"}, "1", [{"class": "foot", "address": "0xaa"}]],
+  "events": [
+    [5, "hypr", "openwindow>>bb,2,firefox,PRIVATE OPEN TITLE"],
+    [10, "hypr", "activewindow>>firefox,PRIVATE FOCUS TITLE"],
+    [10, "hypr", "activewindowv2>>bb"],
+    [12, "hypr", "workspacev2>>2,web"],
+    [15, "hypr", "focusedmon>>DP-2,web"],
+    [20, "hook", "idle"],
+    [25, "hook", "lock"],
+    [30, "hook", "suspend"],
+    [90, "hook", "resume"],
+    [95, "hook", "unlock"],
+    [100, "hook", "active"],
+    [105, "hypr", "closewindow>>bb"],
+    [106, "hypr", "activewindow>>,PRIVATE EMPTY TITLE"],
+    [106, "hypr", "activewindowv2>>"],
+    [110, "hypr", "workspace>>1"],
+    [115, "hypr", "activewindow>>foot,PRIVATE TERMINAL TITLE"],
+    [115, "hypr", "activewindowv2>>aa"],
+    [120, "flush", ""]
+  ],
+  "expected": [
+    [0, 10, "foot", "1", "active"],
+    [10, 12, "firefox", "1", "active"],
+    [12, 20, "firefox", "web", "active"],
+    [20, 25, "firefox", "web", "idle"],
+    [25, 30, "firefox", "web", "locked"],
+    [30, 90, "firefox", "web", "suspended"],
+    [90, 95, "firefox", "web", "locked"],
+    [95, 100, "firefox", "web", "idle"],
+    [100, 105, "firefox", "web", "active"],
+    [105, 110, "", "web", "active"],
+    [110, 115, "", "1", "active"],
+    [115, 120, "foot", "1", "active"]
+  ]
+}

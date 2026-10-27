@@ -1,0 +1,16 @@
+# Merge these hooks into the EXISTING hypridle configuration; do not replace it.
+# When a hook already exists, prepend the diurna command followed by `;`
+# and retain the original command. Use the full path if PATH omits ~/.local/bin.
+general {
+    on_lock_cmd = ~/.local/bin/diurna signal lock
+    on_unlock_cmd = ~/.local/bin/diurna signal unlock
+    before_sleep_cmd = ~/.local/bin/diurna signal suspend
+    after_sleep_cmd = ~/.local/bin/diurna signal resume
+}
+
+listener {
+    timeout = 300
+    on-timeout = ~/.local/bin/diurna signal idle
+    on-resume = ~/.local/bin/diurna signal active
+    ignore_inhibit = true
+}

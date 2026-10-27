@@ -1,0 +1,57 @@
+name: Verify
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ${{ fromJSON(vars.CI_LINUX_RUNNER_LABELS || '["ubuntu-24.04"]') }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Scratch root
+        run: echo "TMPDIR=$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Deterministic collector and transport tests
+        run: python3 -W error::ResourceWarning -m unittest discover -s tests -v
+      - name: Select shell plugin proof
+        id: plugin
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          run=true
+          if [ "$EVENT_NAME" = pull_request ]; then
+            if git cat-file -e "$BASE_SHA^{commit}" && \
+              git diff --quiet "$BASE_SHA" HEAD -- diurna/shell_plugin.py \
+              diurna/shell_plugin scripts/test_shell_plugin.py tests/qml .github/workflows/verify.yml; then
+              run=false
+            fi
+          fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - name: Qt test dependencies (Ubuntu runners)
+        if: steps.plugin.outputs.run == 'true'
+        run: |
+          if command -v apt-get >/dev/null; then
+            privilege=()
+            if [ "$(id -u)" -ne 0 ]; then privilege=(sudo); fi
+            "${privilege[@]}" apt-get update
+            "${privilege[@]}" apt-get install -y --no-install-recommends qt6-declarative-dev-tools \
+              qml6-module-qtquick qml6-module-qtquick-window qml6-module-qttest \
+              qml6-module-qtqml qml6-module-qtqml-workerscript
+          fi
+      - name: Shell plugin behavior and mutation checks
+        if: steps.plugin.outputs.run == 'true'
+        run: python3 scripts/test_shell_plugin.py --check-mutations
+      - name: Build standalone collector
+        run: |
+          python3 scripts/build.py --output "$TMPDIR/diurna.pyz"
+          python3 "$TMPDIR/diurna.pyz" --help

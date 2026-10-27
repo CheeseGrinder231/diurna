@@ -1,0 +1,2 @@
+module Quickshell.Wayland
+IdleMonitor 1.0 IdleMonitor.qml

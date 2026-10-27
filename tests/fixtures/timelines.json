@@ -1,0 +1,111 @@
+{
+  "description": "Timeline fixture days, in seconds from local midnight. A span with a sixth element is stored as that many equal rows, the way no-op events used to split it. Rows are [start, end, state, app_class, workspace, switches].",
+  "days": {
+    "collection_starts_mid_day_with_a_no_op_burst": {
+      "now": 32700,
+      "spans": [
+        [31298, 31418, "foot", "2", "active", 120],
+        [31418, 31419, "org.gnome.Nautilus", "2", "active"],
+        [31419, 32640, "foot", "2", "active", 50]
+      ],
+      "expected": [
+        [0, 31298, "not_recorded", null, null, 0],
+        [31298, 32640, "active", "foot", "2", 2],
+        [32640, 32700, "pending", null, null, 0]
+      ]
+    },
+    "rapid_switching": {
+      "now": 36000,
+      "spans": [
+        [32400, 33000, "code", "3", "active"],
+        [33000, 33020, "slack", "2", "active"],
+        [33020, 33040, "firefox", "2", "active"],
+        [33040, 33060, "slack", "2", "active"],
+        [33060, 33080, "firefox", "2", "active"],
+        [33080, 33100, "slack", "2", "active"],
+        [33100, 33120, "firefox", "2", "active"],
+        [33120, 33140, "slack", "2", "active"],
+        [33140, 33160, "firefox", "2", "active"],
+        [33160, 33180, "slack", "2", "active"],
+        [33180, 33200, "firefox", "2", "active"],
+        [33200, 33220, "slack", "2", "active"],
+        [33220, 33240, "firefox", "2", "active"],
+        [33240, 33260, "slack", "2", "active"],
+        [33260, 33280, "firefox", "2", "active"],
+        [33280, 33300, "slack", "2", "active"],
+        [33300, 33320, "firefox", "2", "active"],
+        [33320, 33340, "slack", "2", "active"],
+        [33340, 33360, "firefox", "2", "active"],
+        [33360, 33380, "slack", "2", "active"],
+        [33380, 33400, "firefox", "2", "active"],
+        [33400, 33420, "slack", "2", "active"],
+        [33420, 33440, "firefox", "2", "active"],
+        [33440, 33460, "slack", "2", "active"],
+        [33460, 33480, "firefox", "2", "active"],
+        [33480, 33500, "slack", "2", "active"],
+        [33500, 33520, "firefox", "2", "active"],
+        [33520, 33540, "slack", "2", "active"],
+        [33540, 33560, "firefox", "2", "active"],
+        [33560, 33580, "slack", "2", "active"],
+        [33580, 33600, "firefox", "2", "active"],
+        [33600, 33900, "code", "3", "active"],
+        [33900, 33940, "mpv", "5", "active"],
+        [33940, 34000, "spotify", "5", "active"],
+        [34000, 36000, "firefox", "2", "active"]
+      ],
+      "expected": [
+        [0, 32400, "not_recorded", null, null, 0],
+        [32400, 33000, "active", "code", "3", 0],
+        [33000, 33600, "active", null, null, 29],
+        [33600, 34000, "active", "code", "3", 2],
+        [34000, 36000, "active", "firefox", "2", 0]
+      ]
+    },
+    "idle_lock_and_sleep": {
+      "now": 43200,
+      "spans": [
+        [0, 25200, "foot", "1", "suspended"],
+        [25200, 25230, "foot", "1", "locked"],
+        [25230, 28800, "firefox", "2", "active"],
+        [28800, 29400, "firefox", "2", "idle"],
+        [29400, 29700, "firefox", "2", "locked"],
+        [29700, 29705, "firefox", "2", "idle"],
+        [29705, 32400, "firefox", "2", "active"],
+        [32400, 32402, "foot", "1", "active"],
+        [32402, 43200, "firefox", "2", "active"]
+      ],
+      "expected": [
+        [0, 25200, "suspended", null, null, 0],
+        [25200, 25230, "locked", null, null, 0],
+        [25230, 28800, "active", "firefox", "2", 0],
+        [28800, 29400, "idle", null, null, 0],
+        [29400, 29700, "locked", null, null, 0],
+        [29700, 29705, "idle", null, null, 0],
+        [29705, 43200, "active", "firefox", "2", 2]
+      ]
+    },
+    "collector_gap": {
+      "now": 64800,
+      "spans": [
+        [-3600, 3600, "foot", "1", "active"],
+        [3600, 32400, "", "", "unknown"],
+        [32400, 36000, "code", "3", "active"],
+        [36000, 36001, "", "", "disconnected"],
+        [36001, 36005, "", "", "unknown"],
+        [36005, 43200, "code", "3", "active"],
+        [50400, 61200, "firefox", "2", "active"]
+      ],
+      "expected": [
+        [0, 3600, "active", "foot", "1", 0],
+        [3600, 32400, "unknown", null, null, 0],
+        [32400, 36000, "active", "code", "3", 0],
+        [36000, 36001, "disconnected", null, null, 0],
+        [36001, 36005, "unknown", null, null, 0],
+        [36005, 43200, "active", "code", "3", 0],
+        [43200, 50400, "not_recorded", null, null, 0],
+        [50400, 61200, "active", "firefox", "2", 0],
+        [61200, 64800, "pending", null, null, 0]
+      ]
+    }
+  }
+}

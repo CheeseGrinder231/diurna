@@ -1,0 +1,50 @@
+{
+  "description": "Synthetic day in minutes from local midnight: a span crossing midnight, sleep, lock, idle, a collector restart (unknown), an empty desktop, a span split by a no-op event (830-900-950) and an unsaved tail before now.",
+  "now": 960,
+  "spans": [
+    [-60, 30, "foot", "1", "active"],
+    [30, 480, "foot", "1", "suspended"],
+    [480, 485, "foot", "1", "locked"],
+    [485, 600, "firefox", "2", "active"],
+    [600, 615, "firefox", "2", "idle"],
+    [615, 700, "code", "3", "active"],
+    [700, 720, "", "", "unknown"],
+    [720, 780, "firefox", "web", "active"],
+    [780, 800, "slack", "4", "active"],
+    [800, 815, "spotify", "5", "active"],
+    [815, 825, "mpv", "5", "active"],
+    [825, 830, "", "1", "active"],
+    [830, 900, "code", "3", "active"],
+    [900, 950, "code", "3", "active"]
+  ],
+  "expected": {
+    "active": 460,
+    "states": {"active": 460, "idle": 15, "locked": 5, "suspended": 450, "disconnected": 0, "unknown": 20},
+    "not_recorded": 0,
+    "pending": 10,
+    "apps": [["code", 205], ["firefox", 175], ["foot", 30], ["slack", 20], ["spotify", 15], ["mpv", 10], ["", 5]],
+    "windows": [["code", "3", 205], ["firefox", "2", 115], ["firefox", "web", 60], ["foot", "1", 30], ["slack", "4", 20], ["spotify", "5", 15], ["mpv", "5", 10], ["", "1", 5]],
+    "timeline": [
+      [0, 30, "active", "foot", "1", 0],
+      [30, 480, "suspended", null, null, 0],
+      [480, 485, "locked", null, null, 0],
+      [485, 600, "active", "firefox", "2", 0],
+      [600, 615, "idle", null, null, 0],
+      [615, 700, "active", "code", "3", 0],
+      [700, 720, "unknown", null, null, 0],
+      [720, 780, "active", "firefox", "web", 0],
+      [780, 800, "active", "slack", "4", 0],
+      [800, 815, "active", "spotify", "5", 0],
+      [815, 825, "active", "mpv", "5", 0],
+      [825, 830, "active", "", "1", 0],
+      [830, 950, "active", "code", "3", 0],
+      [950, 960, "pending", null, null, 0]
+    ]
+  },
+  "bar": {
+    "text": "7h 40m",
+    "tooltip": "Today 7h 40m active\ncode     3h 25m\nfirefox  2h 55m\nfoot     30m\nslack    20m\nspotify  15m\nidle 15m · locked 5m · asleep 7h 30m",
+    "class": ["diurna"],
+    "alt": "tracking"
+  }
+}

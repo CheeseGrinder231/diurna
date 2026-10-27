@@ -1,0 +1,16 @@
+[Unit]
+Description=Diurna: local Hyprland screen time
+Documentation=https://github.com/CheeseGrinder231/diurna
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/diurna collect
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=yes
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=graphical-session.target
