@@ -128,11 +128,19 @@ systemctl --user enable --now diurna.service
 journalctl --user -u diurna.service
 ```
 
-The unit follows `graphical-session.target`. The session must import its new
-Hyprland signature before starting this service on each login (uwsm normally
-manages the graphical environment). A stale signature fails visibly and needs
-an environment import and service restart. A second collector using the same
-database is refused by an exclusive lock. The service's address-family sandbox
+The unit follows `graphical-session.target`. If Hyprland is not ready at login,
+the collector stays running and retries session discovery with exponential
+backoff from 250 ms to at most 5 seconds between attempts. It prefers the imported
+Hyprland signature, but if that is missing or stale it discovers a single live
+instance under `$XDG_RUNTIME_DIR/hypr/` (default `/run/user/<uid>/hypr/`). A later
+systemd environment import does not need to reach the already running process.
+Dead sockets are skipped; multiple live instances without a live explicit
+signature leave the collector waiting to avoid recording the wrong session.
+The waiting interval from collector startup is saved as **unknown**, with no
+app attributed to it. The unit also delays failure restarts by five seconds and
+disables the start-rate cutoff so a slow login cannot exhaust retries.
+A second collector using the same database is refused by an exclusive lock.
+The service's address-family sandbox
 allows only Unix sockets.
 
 Storage defaults to `$XDG_STATE_HOME/diurna/spans.sqlite3`, falling back to
@@ -191,6 +199,10 @@ above the timeline still count every second.
 tooltip lists the top five apps plus idle, locked and asleep time. Classes are
 `diurna`, plus `empty` with no active time yet or `unavailable` when the store
 cannot be read, so the theme's CSS styles it (`#custom-diurna` in Waybar).
+The text also says "not recording" if storage cannot be read, the last saved
+span is unknown/disconnected, or the unsaved tail reaches two minutes (twice the
+checkpoint interval if longer). This uses saved spans rather than probing the
+service. It clears when normal spans are saved again.
 Clicking the module opens `diurna today --watch` in Omarchy's floating terminal
 (`omarchy-launch-or-focus-tui --app-id=TUI.float`). The watch view redraws when
 the collector commits spans (inotify on `$XDG_RUNTIME_DIR/diurna/changed`), with a

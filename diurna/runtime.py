@@ -1,5 +1,6 @@
 """Event loop and hypridle hook transport; Unix sockets only."""
 import fcntl
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import selectors
@@ -8,7 +9,7 @@ import socket
 import time
 
 from .changes import Changes
-from .collector import Collector, Context
+from .collector import Collector, Context, Span
 from .config import policy
 from .ipc import Lines, snapshot
 from .store import Store
@@ -20,14 +21,91 @@ HOOKS = {"idle": ("idle", True), "active": ("idle", False),
          "suspend": ("suspended", True), "resume": ("suspended", False)}
 
 
-def paths():
-    signature = os.environ["HYPRLAND_INSTANCE_SIGNATURE"]
+def runtime_directory():
+    # systemd normally supplies XDG_RUNTIME_DIR even before the graphical
+    # environment import. Its Linux default also works when it is absent.
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
+    if not runtime.is_absolute():
+        raise ValueError("invalid runtime directory")
+    return runtime
+
+
+def valid_signature(signature):
     if not signature or "/" in signature or signature in (".", ".."):
         raise ValueError("invalid Hyprland instance signature")
-    runtime = Path(os.environ["XDG_RUNTIME_DIR"])
+
+
+def paths():
+    signature = os.environ["HYPRLAND_INSTANCE_SIGNATURE"]
+    valid_signature(signature)
+    runtime = runtime_directory()
     directory = runtime / "diurna" / signature
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
     return runtime / "hypr" / signature, directory
+
+
+def session(runtime):
+    """Subscribe and snapshot a live instance, without relying on a later import.
+
+    Prefer an explicit live signature. Otherwise discover sockets; dead socket
+    files are normal after an unclean exit. With multiple live sessions and no
+    live explicit signature, wait rather than attributing another session's apps.
+    """
+    signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    if signature:
+        valid_signature(signature)
+    root = runtime / "hypr"
+    preferred = root / signature if signature else None
+    candidates = sorted(root.glob("*/.socket2.sock"))
+    directories = ([preferred] if preferred else []) + [
+        path.parent for path in candidates if path.parent != preferred]
+    found = []
+    try:
+        for hypr in directories:
+            events = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                timeout = policy()["ipc_timeout_seconds"]
+                events.settimeout(timeout)
+                # Subscribe before the snapshot so focus changes cannot be lost.
+                events.connect(str(hypr / ".socket2.sock"))
+                initial = snapshot(hypr, timeout)
+            except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError, TimeoutError):
+                events.close()
+                continue
+            except BaseException:
+                events.close()
+                raise
+            found.append((events, hypr, initial))
+            if hypr == preferred:
+                return found.pop()
+        if len(found) == 1:
+            return found.pop()
+        return None
+    finally:
+        for events, _, _ in found:
+            events.close()
+
+
+@contextmanager
+def shutdown(selector):
+    """Wake both session startup and the event loop on a graceful stop."""
+    wake_read, wake_write = socket.socketpair()
+    wake_read.setblocking(False)
+    wake_write.setblocking(False)
+    previous_fd = signal.set_wakeup_fd(wake_write.fileno())
+    previous_handlers = {}
+    try:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            previous_handlers[sig] = signal.signal(sig, lambda *_: None)
+        selector.register(wake_read, selectors.EVENT_READ, "stop")
+        yield
+    finally:
+        signal.set_wakeup_fd(previous_fd)
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
+        selector.unregister(wake_read)
+        wake_read.close()
+        wake_write.close()
 
 
 class Clock:
@@ -72,34 +150,69 @@ def notify(event):
 
 def serve(database):
     os.umask(0o077)
-    hypr, directory = paths()
     # Lock the database, not just the session socket: two instances must never
     # append overlapping spans into one store.
     database.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with database.with_name(database.name + ".lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        _serve(database, hypr, directory)
+        _serve(database)
 
 
-def _serve(database, hypr, directory):
+def _serve(database):
     clock = Clock()
+    start = clock()
     store = Store(database)
-    control_path = directory / "control.sock"
     try:
-        with selectors.DefaultSelector() as selector, \
-                socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as events, \
-                socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as control:
-            _loop(selector, events, control, store, clock, hypr, directory, control_path,
-                  Changes(directory.parent))
+        runtime = runtime_directory()
+        directory = runtime / "diurna"
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        changes = Changes(directory)
+        store.resume(start)
+        with selectors.DefaultSelector() as selector, shutdown(selector):
+            delay = 0.25
+            connected = None
+            try:
+                while True:
+                    connected = session(runtime)
+                    now = clock()
+                    if now > start:
+                        store.write(Span(start, now, "", "", "unknown"))
+                        changes.mark()
+                        start = now
+                    changes.flush()
+                    if connected is not None:
+                        events, hypr, initial = connected
+                        with events, socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as control:
+                            directory = directory / hypr.name
+                            directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+                            _loop(selector, events, control, store, clock, hypr, directory,
+                                  directory / "control.sock", changes, initial=initial)
+                        return
+                    # No compositor event source exists yet. Retry startup only,
+                    # with bounded exponential backoff, interruptible by SIGTERM.
+                    if selector.select(delay):
+                        return
+                    delay = min(delay * 2, 5)
+            finally:
+                if connected is not None:
+                    connected[0].close()
+                else:
+                    now = clock()
+                    if now > start:
+                        store.write(Span(start, now, "", "", "unknown"))
+                        changes.mark()
+                    changes.flush()
     finally:
         store.close()
 
 
-def _loop(selector, events, control, store, clock, hypr, directory, control_path, changes):
+def _loop(selector, events, control, store, clock, hypr, directory, control_path, changes,
+          initial=None):
     # Subscribe before querying initial state so startup cannot miss a focus event.
-    events.settimeout(policy()["ipc_timeout_seconds"])
-    events.connect(str(hypr / ".socket2.sock"))
-    initial = snapshot(hypr, policy()["ipc_timeout_seconds"])
+    if initial is None:
+        events.settimeout(policy()["ipc_timeout_seconds"])
+        events.connect(str(hypr / ".socket2.sock"))
+        initial = snapshot(hypr, policy()["ipc_timeout_seconds"])
     control_path.unlink(missing_ok=True)
     control.bind(str(control_path))
     control.listen()
@@ -117,16 +230,8 @@ def _loop(selector, events, control, store, clock, hypr, directory, control_path
     collector.snapshot(*initial)
     sleep = SleepDetector()
     changes.flush()
-    wake_read, wake_write = socket.socketpair()
-    wake_read.setblocking(False)
-    wake_write.setblocking(False)
-    previous_fd = signal.set_wakeup_fd(wake_write.fileno())
-    previous_handlers = {}
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        previous_handlers[sig] = signal.signal(sig, lambda *_: None)
     selector.register(events, selectors.EVENT_READ, "hypr")
     selector.register(control, selectors.EVENT_READ, "control")
-    selector.register(wake_read, selectors.EVENT_READ, "stop")
     framing = Lines()
     last_event = time.monotonic()
     try:
@@ -190,9 +295,4 @@ def _loop(selector, events, control, store, clock, hypr, directory, control_path
             collector.checkpoint()
             changes.flush()
         finally:
-            signal.set_wakeup_fd(previous_fd)
-            for sig, handler in previous_handlers.items():
-                signal.signal(sig, handler)
-            wake_read.close()
-            wake_write.close()
             control_path.unlink(missing_ok=True)

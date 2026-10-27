@@ -42,9 +42,9 @@
     ]
   },
   "bar": {
-    "text": "7h 40m",
-    "tooltip": "Today 7h 40m active\ncode     3h 25m\nfirefox  2h 55m\nfoot     30m\nslack    20m\nspotify  15m\nidle 15m · locked 5m · asleep 7h 30m",
-    "class": ["diurna"],
-    "alt": "tracking"
+    "text": "7h 40m · not recording",
+    "tooltip": "Today 7h 40m active\ncode     3h 25m\nfirefox  2h 55m\nfoot     30m\nslack    20m\nspotify  15m\nidle 15m · locked 5m · asleep 7h 30m\nDiurna: not recording; check diurna.service or the Hyprland session",
+    "class": ["diurna", "unavailable"],
+    "alt": "unavailable"
   }
 }
