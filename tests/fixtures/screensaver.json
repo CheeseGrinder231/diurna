@@ -1,0 +1,37 @@
+{
+  "description": "Minutes from midnight. The screensaver inhibits idle and is stored as active, including checkpoints, a short stay and spans clipped at midnight and now. Other non-active states retain their meaning; fullscreen video and similar app names stay active.",
+  "now": 36,
+  "spans": [
+    [-5, 5, "org.omarchy.screensaver", "1", "active"],
+    [5, 10, "org.omarchy.screensaver", "1", "active"],
+    [10, 11, "org.omarchy.screensaver", "1", "idle"],
+    [11, 12, "org.omarchy.screensaver", "1", "active"],
+    [12, 16, "foot", "1", "active"],
+    [16, 17, "org.omarchy.screensaver", "1", "active"],
+    [17, 21, "foot", "1", "active"],
+    [21, 23, "org.omarchy.screensaver", "1", "locked"],
+    [23, 25, "org.omarchy.screensaver", "1", "suspended"],
+    [25, 27, "org.omarchy.screensaver", "1", "disconnected"],
+    [27, 29, "org.omarchy.screensaver", "1", "unknown"],
+    [29, 31, "org.omarchy.screensaver.preview", "1", "active"],
+    [31, 34, "mpv", "1", "active"],
+    [34, 38, "org.omarchy.screensaver", "1", "active"]
+  ],
+  "expected": {
+    "active": 13,
+    "states": {"active": 13, "idle": 15, "locked": 2, "suspended": 2, "disconnected": 2, "unknown": 2},
+    "apps": [["foot", 8], ["mpv", 3], ["org.omarchy.screensaver.preview", 2]],
+    "timeline": [
+      [0, 12, "idle"],
+      [12, 16, "active"],
+      [16, 17, "idle"],
+      [17, 21, "active"],
+      [21, 23, "locked"],
+      [23, 25, "suspended"],
+      [25, 27, "disconnected"],
+      [27, 29, "unknown"],
+      [29, 34, "active"],
+      [34, 36, "idle"]
+    ]
+  }
+}

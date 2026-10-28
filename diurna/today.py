@@ -37,6 +37,15 @@ def rows(database, start_ns, end_ns):
         db.close()
 
 
+def _reported_reason(app, reason):
+    # The fullscreen screensaver can inhibit the desktop's idle monitor. Apply
+    # this at read time so existing active spans become idle without rewriting
+    # history. Preserve explicit lock, sleep and collector-unavailable states.
+    if reason == "active" and app == "org.omarchy.screensaver":
+        return "idle"
+    return reason
+
+
 def summarize(spans, start_ns, end_ns, date=None):
     """Clip spans to [start_ns, end_ns) and total them by state, app and window.
 
@@ -51,6 +60,7 @@ def summarize(spans, start_ns, end_ns, date=None):
         duration = min(end, end_ns) - max(start, start_ns)
         if duration <= 0:
             continue
+        reason = _reported_reason(app, reason)
         states[reason] += duration
         if reason == "active":
             apps[app] = apps.get(app, 0) + duration
@@ -84,7 +94,7 @@ def summarize(spans, start_ns, end_ns, date=None):
 def timeline(spans, start_ns, end_ns):
     """Rows that tile [start_ns, end_ns) exactly: from when to when, what.
 
-    States are the stored reasons, plus `not_recorded` (no span: Diurna was not
+    States are the reported reasons, plus `not_recorded` (no span: Diurna was not
     running) and `pending` (after the last committed span). Each non-active state
     is its own row. Within active time, focus shorter than FOLD_NS is a switch,
     not an activity: it folds into a neighbouring row (`_fold`). A row is named by
@@ -98,6 +108,7 @@ def timeline(spans, start_ns, end_ns):
             continue
         if start > cursor:
             pieces.append([cursor, start, "not_recorded", None])
+        reason = _reported_reason(app, reason)
         key = (app, workspace) if reason == "active" else None
         if pieces and pieces[-1][1] == start and pieces[-1][2:] == [reason, key]:
             pieces[-1][1] = end  # read-side merge of rows split by no-op events
