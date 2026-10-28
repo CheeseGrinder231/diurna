@@ -162,6 +162,12 @@ commits it: on a change, or at the checkpoint every `safety_seconds` (default 60
 the time after the last committed span; the live view shows it as "Not saved"
 only past two minutes, when the collector may be stopped.
 
+Active spans whose focused app is `org.omarchy.screensaver` are reported as idle
+in totals, app lists, the timeline and the bar. A fullscreen screensaver can
+inhibit the desktop idle monitor. This rule applies when reading, so upgrading
+also corrects existing history without a database migration. Explicit locked,
+asleep and unknown states keep their meaning.
+
 The timeline (`timeline` in the JSON) says from when to when, what. Its rows tile
 the day exactly from midnight to now, each `{start_ns, end_ns, state, app_class,
 workspace, switches, apps}`:
