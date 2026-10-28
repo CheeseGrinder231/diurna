@@ -205,10 +205,11 @@ above the timeline still count every second.
 tooltip lists the top five apps plus idle, locked and asleep time. Classes are
 `diurna`, plus `empty` with no active time yet or `unavailable` when the store
 cannot be read, so the theme's CSS styles it (`#custom-diurna` in Waybar).
-The text also says "not recording" if storage cannot be read, the last saved
-span is unknown/disconnected, or the unsaved tail reaches two minutes (twice the
-checkpoint interval if longer). This uses saved spans rather than probing the
-service. It clears when normal spans are saved again.
+The text also says "not recording" if storage cannot be read or the unsaved
+tail reaches two minutes (twice the checkpoint interval if longer). This uses
+saved span freshness rather than probing the service. A recent unknown restart
+gap does not trigger the warning while the collector's first span is open.
+The warning clears when fresh spans are saved again.
 Clicking the module opens `diurna today --watch` in Omarchy's floating terminal
 (`omarchy-launch-or-focus-tui --app-id=TUI.float`): a full-screen view with three
 tabs that fits its window, so the terminal itself never scrolls.

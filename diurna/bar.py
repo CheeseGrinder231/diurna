@@ -82,10 +82,10 @@ def bar(summary):
     if away:
         lines.append(" · ".join(away))
     classes = ["diurna"] + ([] if summary["active_ns"] else ["empty"])
-    saved = next((row for row in reversed(summary["timeline"])
-                  if row["state"] != "pending"), None)
+    # A restart gap can remain the last saved row until the first checkpoint.
+    # Judge freshness by the unsaved tail, not the state of that historical row.
     stale_ns = max(STALE_NS, 2 * policy()["safety_seconds"] * SECOND)
-    if summary["pending_ns"] >= stale_ns or (saved and saved["state"] in ("unknown", "disconnected")):
+    if summary["pending_ns"] >= stale_ns:
         lines.append("Diurna: not recording; check diurna.service or the Hyprland session")
         return {"text": total + " · not recording", "tooltip": "\n".join(lines),
                 "class": classes + ["unavailable"], "alt": "unavailable"}

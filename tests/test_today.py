@@ -181,23 +181,54 @@ class TodayTests(unittest.TestCase):
             self.assertEqual(main(), 0)
         self.assertEqual(json.loads(stream.getvalue()), bar.unavailable())
 
-    def test_bar_warns_for_waiting_or_stopped_collection_and_recovers(self):
-        for reason in ("unknown", "disconnected"):
-            waiting = [(0, MINUTE, "", "", reason, None)]
-            module = bar.bar(today.summarize(waiting, 0, MINUTE + SECOND))
-            self.assertIn("not recording", module["text"])
-            self.assertEqual(module["alt"], "unavailable")
-            recovered = waiting + [(MINUTE, 2 * MINUTE, "foot", "1", "active", None)]
-            module = bar.bar(today.summarize(recovered, 0, 2 * MINUTE + SECOND))
-            self.assertEqual(module["text"], "1m")
-            self.assertEqual(module["alt"], "tracking")
+    def test_bar_tracks_restart_gap_before_first_focus_change_or_checkpoint(self):
+        path = self.directory / "restart.sqlite3"
+        store = Store(path)
+        try:
+            store.write(Span(0, MINUTE, "foot", "1", "active"))
+            # A sub-second restart gap displays as 0 s but is still stored.
+            restarted = MINUTE + SECOND // 2
+            store.resume(restarted)
+        finally:
+            store.close()
+        now = restarted + 16 * SECOND
+        summary = today.summarize(today.rows(path, 0, now), 0, now)
+        self.assertEqual([row["state"] for row in summary["timeline"]],
+                         ["active", "unknown", "pending"])
+        self.assertEqual(summary["pending_ns"], 16 * SECOND)
+        module = bar.bar(summary)
+        self.assertEqual(module["text"], "1m")
+        self.assertEqual(module["alt"], "tracking")
+        self.assertEqual(module["class"], ["diurna"])
+        self.assertNotIn("not recording", module["tooltip"])
+
+    def test_bar_freshness_is_independent_of_last_saved_state(self):
+        with patch.object(bar, "policy", return_value={"safety_seconds": 60}):
+            for reason in today.REASONS:
+                for pending in (0, 16 * SECOND, bar.STALE_NS - 1,
+                                bar.STALE_NS, bar.STALE_NS + SECOND):
+                    with self.subTest(reason=reason, pending=pending):
+                        saved = [(0, MINUTE, "foot", "1", reason, None)]
+                        module = bar.bar(today.summarize(saved, 0, MINUTE + pending))
+                        stale = pending >= bar.STALE_NS
+                        self.assertEqual("not recording" in module["text"], stale)
+                        self.assertEqual("not recording" in module["tooltip"], stale)
+                        self.assertEqual("unavailable" in module["class"], stale)
+                        self.assertEqual(module["alt"], "unavailable" if stale else
+                                         "tracking" if reason == "active" else "empty")
+
+    def test_bar_stale_tail_respects_checkpoint_interval_and_recovers(self):
         stopped = [(0, MINUTE, "foot", "1", "active", None)]
-        module = bar.bar(today.summarize(stopped, 0, 3 * MINUTE))
-        self.assertIn("not recording", module["text"])
-        self.assertIn("unavailable", module["class"])
-        self.assertIn("not recording", bar.bar(today.summarize([], 0, 3 * MINUTE))["text"])
         with patch.object(bar, "policy", return_value={"safety_seconds": 300}):
-            self.assertNotIn("not recording", bar.bar(today.summarize(stopped, 0, 3 * MINUTE))["text"])
+            for pending, stale in ((2 * MINUTE, False), (10 * MINUTE - 1, False),
+                                   (10 * MINUTE, True), (10 * MINUTE + SECOND, True)):
+                with self.subTest(pending=pending):
+                    module = bar.bar(today.summarize(stopped, 0, MINUTE + pending))
+                    self.assertEqual("unavailable" in module["class"], stale)
+            restarted = stopped + [(MINUTE, 12 * MINUTE, "", "", "unknown", None)]
+            module = bar.bar(today.summarize(restarted, 0, 12 * MINUTE + SECOND))
+            self.assertEqual(module["alt"], "tracking")
+        self.assertIn("not recording", bar.bar(today.summarize([], 0, 3 * MINUTE))["text"])
 
     def test_timeline_fixture_days(self):
         for name, day in TIMELINES["days"].items():
