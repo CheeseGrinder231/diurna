@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from diurna import bar, runtime, today, tui
+from diurna.__main__ import main
 from diurna.changes import Changes
 from diurna.collector import Collector, Span, focused_media, player_name, same_app
 from diurna.store import Store
@@ -342,6 +343,17 @@ class RuntimeSignalTests(unittest.TestCase):
                               (50, 60, "chromium", 1, 1, 1)])
             # Malformed media and a hook with arguments are refused, not acknowledged.
             self.assertEqual(client.sendall.call_count, 3)
+
+    def test_signal_command_forwards_media_players_and_hooks(self):
+        for argv, expected in ((["media", "chromium:playing", "spotify:paused"],
+                                ("media", ["chromium:playing", "spotify:paused"])),
+                               (["media"], ("media", [])),
+                               (["noinput"], ("noinput", []))):
+            with self.subTest(argv=argv), \
+                    patch("sys.argv", ["diurna", "signal", *argv]), \
+                    patch("diurna.__main__.notify") as notify:
+                self.assertEqual(main(), 0)
+                notify.assert_called_once_with(*expected)
 
     def test_signal_state_persists_while_the_collector_is_down(self):
         with tempfile.TemporaryDirectory() as temporary:
