@@ -13,6 +13,7 @@ import sys
 import tempfile
 
 from .changes import WAYBAR_SIGNAL
+from .config import policy
 from . import shell_plugin
 
 WAYBAR_MODULE = "custom/diurna"
@@ -370,6 +371,11 @@ def shell_idle_seconds(text):
     return min(times) if times else 150
 
 
+def hands_on_seconds():
+    # The plugin's input-only monitor takes whole seconds, fixed at install.
+    return max(1, round(policy()["hands_on_seconds"]))
+
+
 # Files ----------------------------------------------------------------------
 
 TARGETS = {"waybar": (waybar_config, waybar_add, waybar_remove),
@@ -391,7 +397,8 @@ def install(target, path=None, executable=None):
             raise InstallError(f"{backup} exists from an earlier install; move it away first")
     if target == "omarchy-shell":
         try:
-            shell_plugin.prepare(path, executable, shell_idle_seconds(original))
+            shell_plugin.prepare(path, executable, shell_idle_seconds(original),
+                                 hands_on_seconds())
         except ValueError as error:
             raise InstallError(str(error)) from error
     if updated == original:

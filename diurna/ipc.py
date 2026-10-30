@@ -31,10 +31,22 @@ def request(directory, command, timeout):
     return json.loads(data)
 
 
+ACTIVE_KEYS = ("class", "address", "inhibitingIdle")
+
+
 def snapshot(directory, timeout):
     active = request(directory, "activewindow", timeout)
     workspace = request(directory, "activeworkspace", timeout).get("name", "")
     clients = request(directory, "clients", timeout)
     # Drop titles before handing data to the reducer.
-    return ({k: active[k] for k in ("class", "address") if k in active}, workspace,
+    return ({k: active[k] for k in ACTIVE_KEYS if k in active}, workspace,
             [{k: w[k] for k in ("class", "address") if k in w} for w in clients])
+
+
+def inhibiting(directory, timeout):
+    """Whether the focused window holds an idle inhibitor; None if unknown."""
+    try:
+        value = request(directory, "activewindow", timeout).get("inhibitingIdle")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return value if isinstance(value, bool) else None

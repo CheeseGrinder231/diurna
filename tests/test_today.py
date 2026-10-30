@@ -133,7 +133,9 @@ class TodayTests(unittest.TestCase):
         self.assertEqual(json.loads(outputs[0])["timeline"][0],
                          {"start_ns": MIDNIGHT, "end_ns": MIDNIGHT + 30 * MINUTE,
                           "state": "active", "app_class": "foot", "workspace": "1",
-                          "switches": 0, "apps": [{"app_class": "foot", "workspace": "1",
+                          "switches": 0,
+                      "activity": {"hands_on_ns": 0, "watching_ns": 0, "on_screen_ns": 0},
+                      "apps": [{"app_class": "foot", "workspace": "1",
                                                    "active_ns": 30 * MINUTE}]})
         self.assertIn("Asleep        7h 30m", outputs[2])
         self.assertIn("Unknown          20m", outputs[2])

@@ -38,12 +38,28 @@ def row_duration(ns):
     return f"{ns // SECOND}s" if ns < 60 * SECOND else duration(ns)
 
 
+# Parts of active time, in the order shown; see today.classify.
+ACTIVITY_LABELS = (("hands_on", "hands-on"), ("watching", "watching"),
+                   ("on_screen", "on screen"))
 STATE_LABELS = {
     "idle": "idle", "locked": "locked", "suspended": "asleep",
     "unknown": "unknown (collector unavailable)",
     "disconnected": "unknown (Hyprland disconnected)",
     "not_recorded": "not recorded (Diurna not running)",
 }
+
+
+def activity_note(activity):
+    """` · hands-on` when one part holds most of a row's split time, the top two
+    with durations when none does, nothing for time recorded without the split."""
+    parts = sorted(((activity[f"{key}_ns"], label) for key, label in ACTIVITY_LABELS),
+                   key=lambda part: -part[0])
+    total = sum(value for value, _ in parts)
+    if not total:
+        return ""
+    if 2 * parts[0][0] > total:
+        return f" · {parts[0][1]}"
+    return " · " + ", ".join(f"{label} {row_duration(value)}" for value, label in parts[:2])
 
 
 def row_label(row, stale):
@@ -53,7 +69,8 @@ def row_label(row, stale):
     if row["state"] != "active":
         return STATE_LABELS[row["state"]]
     switches = row["switches"]
-    more = f" (+{switches} switch{'es' if switches > 1 else ''})" if switches else ""
+    more = activity_note(row["activity"])
+    more += f" (+{switches} switch{'es' if switches > 1 else ''})" if switches else ""
     if row["app_class"] is not None:
         return f"{app_label(row['app_class'])} · ws {row['workspace'] or '?'}{more}"
     apps = {}
@@ -72,6 +89,10 @@ def bar(summary):
     """
     total = duration(summary["active_ns"])
     lines = [f"Today {total} active"]
+    split = activity_totals(summary)
+    if split:
+        lines.append(" · ".join(f"{label.removeprefix('· ')} {duration(value)}"
+                                for label, value in split))
     apps = summary["apps"][:TOOLTIP_APPS]
     width = max((len(app_label(a["app_class"])) for a in apps), default=0)
     lines += [f"{app_label(a['app_class']).ljust(width)}  {duration(a['active_ns'])}"
@@ -104,10 +125,20 @@ def meter(value, largest, width=20):
     return "█" * max(1 if value else 0, round(width * value / largest))
 
 
+def activity_totals(summary):
+    """(label, ns) for the parts of active time; none for a day without the split."""
+    activity = summary["activity"]
+    if not any(activity[f"{key}_ns"] for key, _ in ACTIVITY_LABELS):
+        return []
+    return [(f"· {label}", activity[f"{key}_ns"]) for key, label in ACTIVITY_LABELS]
+
+
 def state_totals(summary):
-    """(label, ns) per state; unknown, not recorded and a stale tail only when present."""
+    """(label, ns) per state, active followed by its parts when split; unknown,
+    not recorded and a stale tail only when present."""
     states = summary["states"]
-    rows = [("Active", states["active_ns"]), ("Idle", states["idle_ns"]),
+    rows = [("Active", states["active_ns"]), *activity_totals(summary),
+            ("Idle", states["idle_ns"]),
             ("Locked", states["locked_ns"]), ("Asleep", states["suspended_ns"])]
     return rows + [(label, value) for label, value in (
         ("Unknown", states["unknown_ns"] + states["disconnected_ns"]),

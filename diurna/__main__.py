@@ -8,7 +8,7 @@ import time
 
 from . import bar
 from .install import InstallError, install, uninstall
-from .runtime import HOOKS, notify, serve
+from .runtime import HOOKS, MEDIA, notify, serve
 from .today import today
 
 
@@ -22,8 +22,10 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     daemon = commands.add_parser("collect", help="collect local desktop spans")
     daemon.add_argument("--database", type=Path, default=database())
-    hook = commands.add_parser("signal", help="desktop idle, lock or sleep event")
-    hook.add_argument("event", choices=HOOKS)
+    hook = commands.add_parser("signal", help="desktop idle, lock, sleep, input or media event")
+    hook.add_argument("event", choices=(*HOOKS, MEDIA))
+    hook.add_argument("players", nargs="*", metavar="PLAYER:STATE",
+                      help="media only: each MPRIS player as name:playing or name:paused")
     day = commands.add_parser("today", help="today's screen time by state, app and window")
     day.add_argument("--database", type=Path, default=database())
     view = day.add_mutually_exclusive_group()
@@ -82,7 +84,7 @@ def main():
         if args.command == "collect":
             serve(args.database)
         else:
-            notify(args.event)
+            notify(args.event, args.players)
     except (OSError, ValueError, RuntimeError, KeyError, sqlite3.Error):
         # Never log raw IPC, command payloads or titles in error diagnostics.
         print("diurna: collection/hook failed; check session environment and service", file=sys.stderr)

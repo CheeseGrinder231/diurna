@@ -32,6 +32,10 @@ class Setting:
 SCHEMA = {
     "safety_seconds": Setting(60.0, 1.0, 3600.0, "DIURNA_SAFETY_SECONDS"),
     "ipc_timeout_seconds": Setting(3.0, 0.1, 30.0, "DIURNA_IPC_TIMEOUT_SECONDS"),
+    # Input this recent counts as hands-on; set in the shell plugin at install.
+    "hands_on_seconds": Setting(60.0, 1.0, 3600.0, "DIURNA_HANDS_ON_SECONDS"),
+    # A screensaver up longer than this turns the on-screen stretch before it away.
+    "screensaver_grace_seconds": Setting(10.0, 0.0, 3600.0, "DIURNA_SCREENSAVER_GRACE_SECONDS"),
 }
 
 

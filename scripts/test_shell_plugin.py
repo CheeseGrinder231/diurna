@@ -43,7 +43,7 @@ def main():
                         help="also prove missing startup/change notifications fail")
     args = parser.parse_args()
     executable = runner()
-    source = payload("/synthetic/diurna", 150)["Service.qml"]
+    source = payload("/synthetic/diurna", 150, 60)["Service.qml"]
     result = run(executable, source)
     print(result.stdout, end="")
     if result.returncode:
@@ -51,8 +51,14 @@ def main():
         return result.returncode
     if args.check_mutations:
         mutations = {
-            "startup notification": "        enqueue(monitor.isIdle ? \"idle\" : \"active\")",
-            "idle-change notification": '        onIsIdleChanged: if (root.ready) root.enqueue(isIdle ? "idle" : "active")',
+            "startup notification": '        enqueue([monitor.isIdle ? "idle" : "active"])',
+            "idle-change notification": '        onIsIdleChanged: if (root.ready) root.enqueue([isIdle ? "idle" : "active"])',
+            "startup input notification": '        enqueue([input.isIdle ? "noinput" : "input"])',
+            "input-change notification": '        onIsIdleChanged: if (root.ready) root.enqueue([isIdle ? "noinput" : "input"])',
+            "startup media notification": "        enqueue(mediaEvent())",
+            "media-change notification": "    onMediaChanged: if (ready) enqueue(mediaEvent())",
+            "input monitor ignoring inhibitors": "        respectInhibitors: false",
+            "waiting media replacement": '            queue = queue.filter((queued, i) => queued[0] !== "media" || (i === 0 && busy))',
         }
         for name, notification in mutations.items():
             if source.count(notification) != 1:

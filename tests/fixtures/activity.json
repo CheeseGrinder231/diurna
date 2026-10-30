@@ -1,0 +1,42 @@
+{
+  "description": "Synthetic recording in seconds from a fake epoch: Hyprland socket2 lines, shell plugin signals (input and noinput from the input-only monitor, idle and active from the inhibitor-respecting one, media with every MPRIS player) and the focused window's idle inhibitor, which Hyprland reports only on request. The shell timeout is 150 s and the hands-on window 60 s. Spotify plays in the background throughout. Expected rows are [start, end, app, workspace, reason, input, media, inhibiting, reads as].",
+  "initial": [{"class": "foot", "address": "0xaa", "inhibitingIdle": false}, "1",
+              [{"class": "foot", "address": "0xaa"}, {"class": "chromium", "address": "0xbb"},
+               {"class": "mpv", "address": "0xcc"}]],
+  "inhibitors": {"foot": false, "chromium": false, "mpv": true},
+  "events": [
+    [0, "hook", "input"],
+    [0, "media", ["chromium:paused", "org.mpris.MediaPlayer2.spotify:playing"]],
+    [60, "hook", "noinput"],
+    [150, "hook", "idle"],
+    [200, "hook", "active"],
+    [200, "hook", "input"],
+    [210, "hypr", "activewindow>>chromium,PRIVATE VIDEO TITLE"],
+    [210, "hypr", "activewindowv2>>bb"],
+    [220, "media", ["chromium:playing", "org.mpris.MediaPlayer2.chromium.instance7:playing", "org.mpris.MediaPlayer2.spotify:playing"]],
+    [270, "hook", "noinput"],
+    [400, "media", ["chromium:paused", "org.mpris.MediaPlayer2.chromium.instance7:paused", "org.mpris.MediaPlayer2.spotify:playing"]],
+    [490, "hook", "idle"],
+    [500, "hook", "active"],
+    [500, "hook", "input"],
+    [510, "hypr", "activewindow>>mpv,PRIVATE FILM TITLE"],
+    [510, "hypr", "activewindowv2>>cc"],
+    [570, "hook", "noinput"],
+    [700, "flush", ""]
+  ],
+  "expected": [
+    [0, 60, "foot", "1", "active", 1, null, 0, "hands_on"],
+    [60, 150, "foot", "1", "active", 0, null, 0, "on_screen"],
+    [150, 200, "foot", "1", "idle", 0, null, 0, "idle"],
+    [200, 210, "foot", "1", "active", 1, null, 0, "hands_on"],
+    [210, 220, "chromium", "1", "active", 1, 0, 0, "hands_on"],
+    [220, 270, "chromium", "1", "active", 1, 1, 0, "hands_on"],
+    [270, 400, "chromium", "1", "active", 0, 1, 0, "watching"],
+    [400, 490, "chromium", "1", "active", 0, 0, 0, "on_screen"],
+    [490, 500, "chromium", "1", "idle", 0, 0, 0, "idle"],
+    [500, 510, "chromium", "1", "active", 1, 0, 0, "hands_on"],
+    [510, 570, "mpv", "1", "active", 1, null, 1, "hands_on"],
+    [570, 700, "mpv", "1", "active", 0, null, 1, "watching"]
+  ],
+  "totals": {"hands_on": 200, "watching": 260, "on_screen": 180, "idle": 60, "away": 0}
+}
