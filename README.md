@@ -479,3 +479,27 @@ Protocol references: [Hyprland IPC](https://wiki.hypr.land/IPC/) and
 [hypridle hooks](https://wiki.hypr.land/Hypr-Ecosystem/hypridle/).
 
 License: MIT
+
+### Finished screen-use periods
+
+A separate local journal exports finished app-only screen-use periods. Its fixed
+10-second screensaver rule and 180-second app fold are independent of view
+settings, workspace grouping and the UI. Publication waits for a committed
+classifier barrier; a checkpoint, idle boundary or midnight cannot force it.
+Raw commits attempt bounded advancement after their own transaction. Publication
+failure leaves raw collection, views and raw export available.
+
+```bash
+diurna publish --database PRIVATE_ARCHIVE  # bounded catch-up, no desktop needed
+diurna publication-status --database PRIVATE_ARCHIVE
+diurna periods --database PRIVATE_ARCHIVE --start-ns POSITIVE_START --end-ns END
+```
+
+These commands use explicit existing private schema-3 archives. Finished reads
+never advance publication or acknowledge intake; all published history is
+retained. The initial implementation audits complete archives within 4096 source
+rows and explicit byte/processing ceilings. Reaching a ceiling or finding
+changed/corrupt history blocks the finished stream for intervention, without
+aging out its suffix. See [the frozen screen-use contract](docs/screen-use.md)
+for exact occurrence vectors, seal proof, recovery limits and typed journal
+interface. No service, sharing transport or live installation is added.
