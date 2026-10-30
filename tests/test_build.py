@@ -41,3 +41,35 @@ class ZipappTests(unittest.TestCase):
                     self.assertTrue(plugin.is_file())
                     self.assertNotIn("@PROGRAM@", plugin.read_text())
             self.assertEqual(config.read_bytes(), original)
+
+    def test_source_and_zipapp_raw_export_match_from_unrelated_directory(self):
+        from diurna.collector import Span
+        from diurna.store import Store
+
+        root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            artifact = directory / "diurna.pyz"
+            path = directory / "synthetic.db"
+            archive = Store(path)
+            archive.write(Span(-9007199254740993, 9007199254740993,
+                               "終端", "二", "active", False, True, None))
+            archive.close()
+            subprocess.run([sys.executable, str(root / "scripts/build.py"),
+                            "--output", str(artifact)], check=True, capture_output=True)
+            arguments = ["export", "--database", str(path), "--start-ns", "-1", "--end-ns", "1"]
+            environment = dict(os.environ, PYTHONPATH=str(root),
+                               XDG_CONFIG_HOME=str(directory / "config"),
+                               XDG_STATE_HOME=str(directory / "state"))
+            environment.pop("HYPRLAND_INSTANCE_SIGNATURE", None)
+            source = subprocess.run([sys.executable, "-m", "diurna", *arguments],
+                                    cwd=directory, env=environment, capture_output=True)
+            environment.pop("PYTHONPATH", None)
+            built = subprocess.run([sys.executable, str(artifact), *arguments],
+                                   cwd=directory, env=environment, capture_output=True)
+            self.assertEqual(source.returncode, 0, source.stderr)
+            self.assertEqual(built.returncode, 0, built.stderr)
+            self.assertEqual(source.stdout, built.stdout)
+            self.assertIn(b'"id":"span:-9007199254740993"', built.stdout)
+            self.assertTrue(built.stdout.endswith(
+                b'{"format":"diurna.raw-spans","version":1,"type":"complete","rows":1}\n'))

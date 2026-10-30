@@ -7,6 +7,8 @@ import sys
 import time
 
 from . import bar
+from .export import ERROR as EXPORT_ERROR, export
+from .store import migrate
 from .install import InstallError, install, uninstall
 from .runtime import HOOKS, MEDIA, notify, serve
 from .today import today
@@ -17,9 +19,24 @@ def database():
     return state / "diurna/spans.sqlite3"
 
 
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        # Raw requests may carry private source text. Never echo bad arguments.
+        if sys.argv[1:2] in (["export"], ["migrate"]):
+            self.exit(2, "diurna: invalid request\n")
+        super().error(message)
+
+
 def main():
-    parser = argparse.ArgumentParser(prog="diurna")
+    parser = Parser(prog="diurna")
     commands = parser.add_subparsers(dest="command", required=True)
+    raw = commands.add_parser("export", help="read-only versioned raw-span JSONL")
+    raw.add_argument("--database", type=Path, required=True)
+    raw.add_argument("--start-ns", type=int, required=True)
+    raw.add_argument("--end-ns", type=int, required=True)
+    raw.add_argument("--through-start-ns", type=int, help="cap the saved source high point")
+    upgrade = commands.add_parser("migrate", help="migrate existing storage while collection is stopped")
+    upgrade.add_argument("--database", type=Path, required=True)
     daemon = commands.add_parser("collect", help="collect local desktop spans")
     daemon.add_argument("--database", type=Path, default=database())
     hook = commands.add_parser("signal", help="desktop idle, lock, sleep, input or media event")
@@ -43,6 +60,26 @@ def main():
         if name == "install":
             command.add_argument("--program", help="diurna executable the bar runs")
     args = parser.parse_args()
+    if args.command in ("export", "migrate"):
+        try:
+            if args.command == "export":
+                export(args.database, sys.stdout.buffer, args.start_ns, args.end_ns,
+                       args.through_start_ns)
+                sys.stdout.buffer.flush()
+            else:
+                migrate(args.database)
+        except (OSError, ValueError, sqlite3.Error, OverflowError, MemoryError) as error:
+            if isinstance(error, BrokenPipeError):
+                # Avoid a second, unsanitized flush error at interpreter shutdown.
+                fd = os.open(os.devnull, os.O_WRONLY)
+                try:
+                    os.dup2(fd, sys.stdout.fileno())
+                finally:
+                    os.close(fd)
+            print(EXPORT_ERROR if args.command == "export" else "diurna: migration failed\n",
+                  file=sys.stderr, end="")
+            return 1
+        return 0
     if args.command == "bar":
         try:
             output = bar.bar(today(args.database, time.time_ns()))

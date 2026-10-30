@@ -23,7 +23,7 @@ server and web UI (ActivityWatch with awatcher), are early single-author binarie
   - `diurna today` and `diurna week` on the command line.
   - A bar module showing today's active total, for Waybar or the Omarchy 4 bar, that expands to a live today view.
   - An Omarchy menu entry.
-- **Standalone export (planned).** A versioned JSON Lines export and SQLite schema will let other local apps read spans, with stable IDs for idempotent reads.
+- **Standalone raw export.** An explicit, bounded JSON Lines snapshot gives local apps stable, machine/history-qualified raw span IDs. See [the versioned export contract](docs/export.md).
 
 ## Collector
 
@@ -32,9 +32,8 @@ event socket and accepts idle, lock and sleep transitions from desktop signals.
 On Omarchy 4, a shell plugin reports idle and Linux clock differences detect
 sleep. Omarchy 3 can use hypridle hooks for all three states.
 It uses Unix sockets only and makes no network calls. Titles are discarded
-before reducing events and SQLite enforces `title IS NULL`. Per-app title rules,
-`diurna today` and the bar module are available; per-app title rules, `diurna week`
-and the versioned export are planned.
+before reducing events and SQLite enforces `title IS NULL`. `diurna today` and
+the bar module are available; per-app title rules and `diurna week` are planned. The versioned raw export is available independently of derived views.
 
 ```bash
 python3 -W error::ResourceWarning -m unittest discover -s tests -v
@@ -398,19 +397,46 @@ systemd restarts the daemon. A backwards wall-clock jump across restarts is
 refused if it precedes the stored endpoint. Review the journal and correct the
 clock before restarting; do not rewrite stored history.
 
-Schema version 2 (`PRAGMA user_version`) stores integer epoch nanoseconds,
+Schema version 3 (`PRAGMA user_version`) stores integer epoch nanoseconds,
 app class, workspace name, active flag, reason, a nullable title column and three
 nullable 0/1 signals: `input`, `media` (focused app's player Playing, 0 when it
 has players and none plays, NULL when it has none) and `inhibiting`. NULL means
-no source reported it. The collector upgrades a version 1 database in place, in
-one transaction, by adding the columns; existing rows keep NULL and read as
-before. Reasons are `active`, `idle`, `locked`, `suspended`, `disconnected`, `unknown`.
+no source reported it. The collector upgrades schema 1 or 2 atomically, adding
+signals only for schema 1; those legacy signals remain NULL and read as before. Reasons are `active`, `idle`, `locked`, `suspended`, `disconnected`, `unknown`.
 The split is flags, not new reasons: `active` and every total keep their meaning
 for existing readers, and the split is a reading of raw signals, so its rules can
 change without rewriting rows.
 Each insert commits its boundary. `active` is false for every other reason;
-consumers should show unknown time separately. The schema is internal until
-the versioned export is available; do not treat it as the published export contract.
+consumers should show unknown time separately. The SQLite schema remains internal;
+the published raw contract is [JSON Lines version 1](docs/export.md). Schema 3 adds
+transactional random machine/history UUIDs, and readers accept schemas 1, 2 and 3
+without changing classification or totals.
+
+### Private migration and raw export
+
+Stop collection before migrating or backing up state. To upgrade an existing
+schema-1/2 database without starting desktop collection, run:
+
+```bash
+diurna migrate --database "$XDG_STATE_HOME/diurna/spans.sqlite3"
+diurna export --database "$XDG_STATE_HOME/diurna/spans.sqlite3" \
+  --start-ns START_EPOCH_NS --end-ns END_EPOCH_NS > "$TMPDIR/raw-spans.jsonl"
+```
+
+Use `~/.local/state/diurna/spans.sqlite3` when `XDG_STATE_HOME` is unset. Export
+requires an explicit private schema-3 database and a finite range. It opens the
+source read-only and never upgrades or creates it. It preserves complete raw
+span boundaries and checkpoints, with stable `(machine, generation, span:start)`
+identity, nullable signals and no titles. Raw `active` is a stored label, not a
+claim about corrected attention or a finished screen period.
+
+Check the command's successful exit and terminal `complete` record before using
+the output. Invalid state or exhausted budgets fail without a silently truncated
+success. Keep complete private backups: restore preserves identity; identity loss
+or corruption in established history blocks use. Older software may reject
+schema 3. Divergent producers copied from one archive require an explicit new
+history and overlap disclosure before collection. See [the export contract and
+backup/downgrade instructions](docs/export.md) for exact bytes, bounds and limits.
 
 Operational settings are reloaded at call time from
 `$XDG_CONFIG_HOME/diurna/config.json`, falling back to

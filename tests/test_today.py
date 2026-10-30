@@ -2,6 +2,7 @@ from contextlib import redirect_stdout
 import io
 import json
 import os
+import sqlite3
 from pathlib import Path
 import sys
 import tempfile
@@ -158,6 +159,47 @@ class TodayTests(unittest.TestCase):
             "  13:50–15:50    2h 0m  code · ws 3",
             "  15:50–16:00      10m  not saved (is the collector running?)",
         ])
+
+    def test_legacy_views_and_cli_bytes_are_identical_after_identity_migration(self):
+        for version in (1, 2):
+            path = self.directory / f"legacy-{version}.db"
+            original = sqlite3.connect(self.path)
+            db = sqlite3.connect(path)
+            try:
+                columns = "id,start_ns,end_ns,app_class,workspace,active,reason,title"
+                if version == 2:
+                    columns += ",input,media,inhibiting"
+                # An independently anonymous copy, never a downgraded real archive.
+                db.execute("CREATE TABLE spans AS SELECT " + columns + " FROM "
+                           "(SELECT 0 id, 0 start_ns, 1 end_ns, '' app_class, '' workspace, "
+                           "1 active, 'active' reason, NULL title, NULL input, "
+                           "NULL media, NULL inhibiting) WHERE 0")
+                data = original.execute(f"SELECT {columns} FROM spans").fetchall()
+                db.executemany("INSERT INTO spans VALUES (" + ",".join("?" for _ in data[0])
+                               + ")", data)
+                if version == 2:
+                    db.execute("UPDATE spans SET input=0, media=1, inhibiting=0 "
+                               "WHERE reason='active'")
+                db.execute(f"PRAGMA user_version={version}")
+                db.commit()
+            finally:
+                original.close()
+                db.close()
+
+            def views():
+                with FixedZone("UTC"), patch("diurna.__main__.time.time_ns", return_value=self.now):
+                    outputs = []
+                    for argv in (["today", "--json"], ["today"], ["bar"]):
+                        stream = io.StringIO()
+                        with patch.object(sys, "argv", ["diurna", *argv, "--database", str(path)]), \
+                                redirect_stdout(stream):
+                            self.assertEqual(main(), 0)
+                        outputs.append(stream.getvalue())
+                    return (today.rows(path, MIDNIGHT, self.now), outputs)
+
+            before = views()
+            Store(path).close()
+            self.assertEqual(views(), before)
 
     def test_missing_database_is_an_empty_day_and_bad_schema_is_unavailable(self):
         missing = self.directory / "missing.sqlite3"

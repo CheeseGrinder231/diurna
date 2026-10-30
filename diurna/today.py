@@ -44,7 +44,7 @@ def rows(database, start_ns, end_ns):
     db = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True)
     try:
         version = db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (1, 2):
+        if version not in (1, 2, 3):
             raise ValueError("unsupported diurna schema")
         if version == 1:
             return db.execute("""
