@@ -1,0 +1,83 @@
+{
+  "description": "Stored spans in seconds from local midnight, read with the default 10 s screensaver grace. Rows are [start, end, app, workspace, reason, input, media, inhibiting]; the shell timeout is 150 s, the lock timeout 3600 s, so the screensaver runs 3450 s before the lock screen, which is not a Hyprland window. Expected timelines are [start, end, state, app_class] and totals are seconds.",
+  "days": {
+    "screensaver_up_60s_makes_the_on_screen_stretch_away": {
+      "now": 400,
+      "spans": [
+        [0, 60, "foot", "1", "active", 1, null, 0],
+        [60, 150, "foot", "1", "active", 0, null, 0],
+        [150, 151, "foot", "1", "idle", 0, null, 0],
+        [151, 211, "org.omarchy.screensaver", "1", "active", 0, null, 1],
+        [211, 212, "org.omarchy.screensaver", "1", "active", 1, null, 1],
+        [212, 400, "foot", "1", "active", 1, null, 0]
+      ],
+      "timeline": [[0, 60, "active", "foot"], [60, 212, "idle", null], [212, 400, "active", "foot"]],
+      "totals": {"hands_on": 248, "watching": 0, "on_screen": 0, "idle": 152, "away": 90}
+    },
+    "screensaver_dismissed_after_3s_keeps_on_screen": {
+      "now": 400,
+      "spans": [
+        [0, 60, "foot", "1", "active", 1, null, 0],
+        [60, 150, "foot", "1", "active", 0, null, 0],
+        [150, 151, "foot", "1", "idle", 0, null, 0],
+        [151, 153, "org.omarchy.screensaver", "1", "active", 0, null, 1],
+        [153, 154, "org.omarchy.screensaver", "1", "active", 1, null, 1],
+        [154, 400, "foot", "1", "active", 1, null, 0]
+      ],
+      "timeline": [[0, 150, "active", "foot"], [150, 154, "idle", null], [154, 400, "active", "foot"]],
+      "totals": {"hands_on": 306, "watching": 0, "on_screen": 90, "idle": 4, "away": 0}
+    },
+    "screensaver_until_the_lock_then_no_window_then_idle_is_away": {
+      "now": 4100,
+      "spans": [
+        [0, 60, "foot", "1", "active", 1, null, 0],
+        [60, 150, "foot", "1", "active", 0, null, 0],
+        [150, 151, "foot", "1", "idle", 0, null, 0],
+        [151, 3601, "org.omarchy.screensaver", "1", "active", 0, null, 1],
+        [3601, 3751, "", "1", "active", 0, null, null],
+        [3751, 4000, "", "1", "idle", 0, null, null],
+        [4000, 4100, "", "1", "active", 1, null, null]
+      ],
+      "timeline": [[0, 60, "active", "foot"], [60, 4000, "idle", null], [4000, 4100, "active", ""]],
+      "totals": {"hands_on": 160, "watching": 0, "on_screen": 0, "idle": 3940, "away": 240}
+    },
+    "input_after_the_screensaver_is_active_at_the_input": {
+      "now": 4000,
+      "spans": [
+        [0, 60, "foot", "1", "active", 1, null, 0],
+        [60, 150, "foot", "1", "active", 0, null, 0],
+        [150, 151, "foot", "1", "idle", 0, null, 0],
+        [151, 3601, "org.omarchy.screensaver", "1", "active", 0, null, 1],
+        [3601, 3631, "", "1", "active", 0, null, null],
+        [3631, 3691, "", "1", "active", 1, null, null],
+        [3691, 3781, "", "1", "active", 0, null, null],
+        [3781, 4000, "", "1", "idle", 0, null, null]
+      ],
+      "timeline": [[0, 60, "active", "foot"], [60, 3631, "idle", null], [3631, 3781, "active", ""], [3781, 4000, "idle", null]],
+      "totals": {"hands_on": 120, "watching": 0, "on_screen": 90, "idle": 3790, "away": 120}
+    },
+    "a_focus_change_or_media_without_input_does_not_leave_away": {
+      "now": 900,
+      "spans": [
+        [0, 60, "foot", "1", "active", 1, null, 0],
+        [60, 150, "foot", "1", "active", 0, null, 0],
+        [150, 300, "foot", "1", "idle", 0, null, 0],
+        [300, 450, "", "2", "active", 0, null, null],
+        [450, 600, "mpv", "2", "active", 0, 1, 1],
+        [600, 900, "mpv", "2", "active", 1, 1, 1]
+      ],
+      "timeline": [[0, 150, "active", "foot"], [150, 600, "idle", null], [600, 900, "active", "mpv"]],
+      "totals": {"hands_on": 360, "watching": 0, "on_screen": 90, "idle": 450, "away": 300}
+    },
+    "media_paused_with_an_inhibitor_is_on_screen_and_no_signal_is_unsplit": {
+      "now": 600,
+      "spans": [
+        [0, 200, "chromium", "1", "active", 0, 0, 1],
+        [200, 400, "chromium", "1", "active", 0, null, 1],
+        [400, 600, "chromium", "1", "active", null, null, null]
+      ],
+      "timeline": [[0, 600, "active", "chromium"]],
+      "totals": {"hands_on": 0, "watching": 200, "on_screen": 200, "unsplit": 200, "idle": 0, "away": 0}
+    }
+  }
+}

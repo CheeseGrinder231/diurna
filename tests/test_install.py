@@ -3,6 +3,7 @@ from pathlib import Path
 import re
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from diurna import install, shell_plugin
 from diurna.changes import WAYBAR_SIGNAL
@@ -151,7 +152,9 @@ class InstallTests(unittest.TestCase):
         source = (assets / "Service.qml").read_text()
         self.assertIn(json.dumps(PROGRAM), source)
         self.assertIn("timeout: 150", source)
+        self.assertIn("timeout: 60\n        respectInhibitors: false", source)
         self.assertNotIn("@PROGRAM@", source)
+        self.assertNotIn("@HANDS_ON@", source)
         right = config["bar"]["layout"]["right"]
         self.assertEqual(right[0], {
             "id": "diurna", "type": "command", "exec": PROGRAM + " bar", "interval": 60,
@@ -162,6 +165,32 @@ class InstallTests(unittest.TestCase):
         install.install("omarchy-shell", path, PROGRAM)
         self.assertEqual(path.read_text(), installed)
         install.uninstall("omarchy-shell", path)
+        self.assertEqual(path.read_text(), SHELL)
+        self.assertFalse(assets.exists())
+
+    def test_hands_on_window_comes_from_config_at_install(self):
+        path = self.write("shell.json", SHELL)
+        with patch.object(install, "policy", return_value={"hands_on_seconds": 89.6}):
+            install.install("omarchy-shell", path, PROGRAM)
+        assets = shell_plugin.directory(path)
+        self.assertEqual(json.loads((assets / "manifest.json").read_text())
+                         ["diurnaHandsOnSeconds"], 90)
+        self.assertIn("timeout: 90\n", (assets / "Service.qml").read_text())
+        install.uninstall("omarchy-shell", path)
+        self.assertEqual(path.read_text(), SHELL)
+        self.assertFalse(assets.exists())
+
+    def test_unchanged_plugin_from_an_earlier_version_uninstalls(self):
+        # Diurna before the activity split shipped plugin 1.0.0 (idle only).
+        path = self.write("shell.json", SHELL)
+        install.install("omarchy-shell", path, PROGRAM)
+        assets = shell_plugin.directory(path)
+        for name, text in shell_plugin.payload(PROGRAM, 150).items():
+            (assets / name).write_text(text)
+        self.assertNotIn("diurnaHandsOnSeconds", (assets / "manifest.json").read_text())
+        self.assertNotIn("Mpris", (assets / "Service.qml").read_text())
+        message = install.uninstall("omarchy-shell", path)
+        self.assertNotIn("kept", message)
         self.assertEqual(path.read_text(), SHELL)
         self.assertFalse(assets.exists())
 

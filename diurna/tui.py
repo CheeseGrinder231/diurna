@@ -26,7 +26,8 @@ SHADES = {"active": "█", "idle": "▒", "away": "░", "none": "·"}
 CATEGORY = {"active": "active", "idle": "idle", "locked": "away", "suspended": "away",
             "unknown": "none", "disconnected": "none", "not_recorded": "none",
             "pending": "none"}
-TOTAL_CATEGORY = {"Active": "active", "Idle": "idle", "Locked": "away", "Asleep": "away"}
+TOTAL_CATEGORY = {"Active": "active", "· hands-on": "active", "· watching": "active",
+                  "· on screen": "active", "Idle": "idle", "Locked": "away", "Asleep": "away"}
 PART_LABELS = {"idle": "idle", "locked": "locked", "suspended": "asleep",
                "unknown": "unknown", "disconnected": "unknown",
                "not_recorded": "not recorded", "pending": "not saved"}
@@ -80,7 +81,8 @@ def view_row_label(row):
     listed = ", ".join(f"{name} {bar.row_duration(value)}" for name, value in top[:3])
     others = f", +{len(top) - 3} more" if len(top) > 3 else ""
     switches = row["switches"]
-    more = f" (+{switches} switch{'es' if switches > 1 else ''})" if switches else ""
+    more = bar.activity_note(row["activity"])
+    more += f" (+{switches} switch{'es' if switches > 1 else ''})" if switches else ""
     return f"mixed · {listed}{others}{more}"
 
 

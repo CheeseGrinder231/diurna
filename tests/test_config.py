@@ -42,20 +42,26 @@ class ConfigTests(unittest.TestCase):
     def test_each_setting_falls_through_independently_and_removal_reloads(self):
         os.environ.update(DIURNA_SAFETY_SECONDS="20", DIURNA_IPC_TIMEOUT_SECONDS="4")
         self.path.write_text('{"safety_seconds": false, "ipc_timeout_seconds": 0.5}')
-        self.assertEqual(config.policy(), {"safety_seconds": 20, "ipc_timeout_seconds": 0.5})
+        defaults = {"hands_on_seconds": 60, "screensaver_grace_seconds": 10}
+        self.assertEqual(config.policy(), {"safety_seconds": 20, "ipc_timeout_seconds": 0.5,
+                                           **defaults})
         self.path.unlink()
-        self.assertEqual(config.policy(), {"safety_seconds": 20, "ipc_timeout_seconds": 4})
+        self.assertEqual(config.policy(), {"safety_seconds": 20, "ipc_timeout_seconds": 4,
+                                           **defaults})
         os.environ.pop("DIURNA_SAFETY_SECONDS")
         os.environ.pop("DIURNA_IPC_TIMEOUT_SECONDS")
-        self.assertEqual(config.policy(), {"safety_seconds": 60, "ipc_timeout_seconds": 3})
+        self.assertEqual(config.policy(), {"safety_seconds": 60, "ipc_timeout_seconds": 3,
+                                           **defaults})
 
     def test_bounds_types_and_nonfinite_numbers_in_file_and_environment(self):
         for key, env, low, high, default in (
             ("safety_seconds", "DIURNA_SAFETY_SECONDS", 1, 3600, 60),
             ("ipc_timeout_seconds", "DIURNA_IPC_TIMEOUT_SECONDS", 0.1, 30, 3),
+            ("hands_on_seconds", "DIURNA_HANDS_ON_SECONDS", 1, 3600, 60),
+            ("screensaver_grace_seconds", "DIURNA_SCREENSAVER_GRACE_SECONDS", 0, 3600, 10),
         ):
             for raw, expected in (
-                (str(low), low), (str(high), high), ("0", default),
+                (str(low), low), (str(high), high), ("0" if low else "-1", default),
                 (str(high + 1), default), ("true", default), ('"2"', default),
                 ("null", default), ("[]", default), ("{}", default),
                 ("NaN", default), ("Infinity", default), ("-Infinity", default),

@@ -65,7 +65,8 @@ class ProtocolTests(unittest.TestCase):
                     patch.object(runtime, "policy", return_value={"ipc_timeout_seconds": 1}):
                 with self.assertRaises(OSError):
                     runtime.notify("lock")
-                self.assertEqual(runtime.flags(directory), {"idle": False, "locked": True, "suspended": False})
+                self.assertEqual(runtime.flags(directory), {"idle": False, "locked": True, "suspended": False,
+                                                          "input": None})
 
     def test_hook_acknowledgement_and_state_clear(self):
         with tempfile.TemporaryDirectory() as temporary:

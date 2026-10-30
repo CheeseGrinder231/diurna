@@ -16,7 +16,7 @@ server and web UI (ActivityWatch with awatcher), are early single-author binarie
   - A small user daemon listens to Hyprland's event socket (`.socket2.sock`: active window, workspace, monitor, window open and close).
   - It also listens to idle, lock and suspend signals.
   - There is no polling loop. A span ends on the next event that changes the app, workspace or state, and a timer only stands in for a missed event.
-- **Local only.** Spans go to a SQLite file on this machine: app class, workspace, start, end, idle or active, and an optional window title. Nothing leaves the computer. No screenshots, no keystrokes, no audio.
+- **Local only.** Spans go to a SQLite file on this machine: app class, workspace, start, end, idle or active, whether there was input and whether the focused app plays media, and an optional window title. Nothing leaves the computer. No screenshots, no keystrokes, no audio.
 - **Privacy rules at collection.** Window titles are off by default. Per-app rules can keep a title, hash it, or map it to a project (for example a terminal's working directory or an editor's project name). A title never stored can never leak.
 - **Rollups.** Per day and hour: by app, by project, active versus idle, and focus sessions (contiguous use of one app or project).
 - **Surfaces.**
@@ -53,9 +53,11 @@ Ubuntu: `qt6-declarative-dev-tools`, `qml6-module-qtquick`,
 `qml6-module-qtquick-window`, `qml6-module-qttest`, `qml6-module-qtqml` and
 `qml6-module-qtqml-workerscript`). Quickshell and a desktop session are not
 needed: fake native types drive the shipped QML's initial state and idle/active
-transitions, recording process commands without launching them. Tests use
+transitions, input-only monitor changes and MPRIS player changes, recording
+process commands without launching them. Tests use
 synchronous stimuli, without wall-clock deadlines. Mutation checks remove each
-notification in scratch and require the behavior assertions to fail. The
+notification (and the input monitor's `respectInhibitors: false`) in scratch and
+require the behavior assertions to fail. The
 collector and built artifact still require only Python's standard library.
 
 ### Manual installation
@@ -95,10 +97,23 @@ and enables it in `shell.json`'s `plugins` array. It uses Quickshell's native
 serializes signals, and retries a failed acknowledgement after 60 seconds.
 No hypridle, hyprlock or hand-written hooks are needed for idle and sleep.
 
+The plugin also splits active time (see [Hands-on, watching and on screen](#hands-on-watching-and-on-screen)).
+A second `IdleMonitor` with `respectInhibitors: false` reports real keyboard or
+pointer input only: `diurna signal input` on input, `diurna signal noinput` once
+none has come for `hands_on_seconds` (default 60). It also watches MPRIS players
+through `Quickshell.Services.Mpris` and sends `diurna signal media` with each
+player's desktop entry and bus name, and whether it is Playing
+(`chromium:playing org.mpris.MediaPlayer2.spotify:paused`). It sends no track
+titles, artists or other metadata. A newer player state replaces one still
+waiting to be sent. No new dependency or Wayland client is involved.
+
 At install time, the idle threshold matches the first enabled `idle.screensaver`
 or `idle.lock` timeout in `shell.json` (defaults 150 and 300 seconds). If both
-are disabled, Diurna uses 150 seconds. Reinstall after changing those settings;
-remove the unchanged plugin with uninstall first. The monitor respects compositor
+are disabled, Diurna uses 150 seconds. The hands-on window is
+`hands_on_seconds` from Diurna's config, in whole seconds. Reinstall after
+changing those settings; remove the unchanged plugin with uninstall first. To
+upgrade a plugin installed by an earlier Diurna, uninstall with the new
+executable, then install. Uninstall recognizes the earlier plugin's unchanged files. The monitor respects compositor
 idle inhibitors. Omarchy's Stay Awake switch disables its own idle service; it
 does not disable Diurna's separate monitor.
 
@@ -162,6 +177,14 @@ commits it: on a change, or at the checkpoint every `safety_seconds` (default 60
 the time after the last committed span; the live view shows it as "Not saved"
 only past two minutes, when the collector may be stopped.
 
+`activity` in the JSON splits `active_ns` into `hands_on_ns`, `watching_ns`,
+`on_screen_ns` and `unsplit_ns` (time recorded without the split). `away_ns`
+is time the away rules below take from active; it is included in `idle_ns`. Each
+app has the same three parts beside its `active_ns`. The text view lists them
+under Active (`· hands-on`, `· watching`, `· on screen`), the bar tooltip adds a
+line with them, and each active timeline row names the part holding most of its
+time, or its top two parts. A day recorded without the split shows none of this.
+
 Active spans whose focused app is `org.omarchy.screensaver` are reported as idle
 in totals, app lists, the timeline and the bar. A fullscreen screensaver can
 inhibit the desktop idle monitor. This rule applies when reading, so upgrading
@@ -170,7 +193,7 @@ asleep and unknown states keep their meaning.
 
 The timeline (`timeline` in the JSON) says from when to when, what. Its rows tile
 the day exactly from midnight to now, each `{start_ns, end_ns, state, app_class,
-workspace, switches, apps}`:
+workspace, switches, activity, apps}`:
 
 ```text
 Timeline
@@ -259,10 +282,76 @@ The Omarchy 4 bar (omarchy-shell) re-runs command modules on their interval only
 so there the bar text refreshes every 60 seconds; the expanded view still updates
 on each change.
 
+### Hands-on, watching and on screen
+
+Diurna counts the focused window only. Without the split, a focused window
+counted as active until the shell's idle timeout (Omarchy's screensaver default
+is 150 s), even when you only watched it, and never ended while an idle
+inhibitor was held. With the Omarchy 4 shell plugin, focused time that is not
+idle splits three ways. The parts add up to active, so totals keep their meaning.
+
+1. **Hands-on:** keyboard or pointer input within the last `hands_on_seconds`
+   (default 60, so a pause to think stays hands-on).
+2. **Watching:** no input, and the focused app is playing media. The primary
+   signal is its MPRIS player reporting Playing. If the app has no player, the
+   fallback is the focused window holding an idle inhibitor. There is no time
+   cap, because the screensaver is held off while it plays.
+3. **On screen:** no input and nothing playing, for example an agent working
+   while you watch it. With a 150 s screensaver timeout this lasts at most about
+   90 s per stretch, then the time is idle.
+
+A player matches the focused window when its desktop entry or bus name
+(`org.mpris.MediaPlayer2.<name>.instance…` without prefix and suffix) equals the
+window class, its last dot-separated part or the part before a `-` (case
+insensitive). Chromium, Chrome and Brave players also match `chrome-…` app
+windows (Omarchy web apps). Players in other apps never count.
+
+The screensaver is a tell, applied when reading, over raw spans and signals.
+Changing a rule or setting rewrites nothing:
+
+- Time while the screensaver window (`org.omarchy.screensaver`) is focused is
+  idle, never an app (above).
+- An on-screen stretch that runs into the screensaver, with only on-screen or
+  idle time and no input between, is away (idle) if the screensaver stays up
+  longer than `screensaver_grace_seconds` (default 10). Dismissed sooner, you
+  were there, and it stays on screen.
+- **Leaving away needs input.** After idle, locked, asleep or screensaver time,
+  watching and on-screen time stay away until input. A focus change or an
+  inhibitor going away does not end it. This covers the lock screen: it is not a
+  Hyprland window, so after the screensaver no window is focused, and the shell's
+  idle countdown restarts from zero when the screensaver's inhibitor goes away.
+  Unknown time, a gap or a span without signals also ends away, since Diurna
+  cannot tell. Reading a day starts from the last stored input before midnight,
+  so away carries across it.
+
+Diurna records only whether there was input in the window and whether the
+focused app's player is playing (plus whether its window holds an inhibitor). It
+stores no keys, pointer positions, titles or media metadata. The latest player
+list stays in the session runtime directory, so a restarting collector keeps it;
+it is never written to the database.
+
+Limits:
+
+- Unfocused apps are not counted.
+- Input is session-wide: input to any window, or with the bar, counts as
+  hands-on for the focused app.
+- MPRIS is per app, not per tab: music in one browser tab makes the focused
+  browser count as watching.
+- The inhibitor fallback is only as good as the compositor rules. An X11 browser
+  cannot set inhibitors itself, so they often come only from Hyprland
+  `idle_inhibit` window rules, which match class or title, not playback.
+  Hyprland sends no event for inhibitors: Diurna asks on focus, fullscreen and
+  input changes, and at the quiet-interval net.
+- Days recorded earlier, and setups without the shell plugin (Omarchy 3
+  hypridle), have no split: their active time is `unsplit_ns`.
+- The plugin reports input at shell start, so the first `hands_on_seconds` after
+  a shell restart read as hands-on.
+
 ### Span behavior and recovery
 
 A recognized focus, workspace, monitor, window-close or desktop signal event ends
-the preceding span only if it changes the app class, workspace or reason. Events
+the preceding span only if it changes the app class, workspace, reason or a
+recorded activity signal (input, the focused app's media, its inhibitor). Events
 that change nothing extend the open span: a terminal that retitles itself re-sends
 `activewindow` for the same window many times a second, which used to write about
 3,300 rows an hour. Paired events at the same fake timestamp produce no
@@ -309,9 +398,16 @@ systemd restarts the daemon. A backwards wall-clock jump across restarts is
 refused if it precedes the stored endpoint. Review the journal and correct the
 clock before restarting; do not rewrite stored history.
 
-Schema version 1 (`PRAGMA user_version`) stores integer epoch nanoseconds,
-app class, workspace name, active flag, reason and a nullable title column.
-Reasons are `active`, `idle`, `locked`, `suspended`, `disconnected`, `unknown`.
+Schema version 2 (`PRAGMA user_version`) stores integer epoch nanoseconds,
+app class, workspace name, active flag, reason, a nullable title column and three
+nullable 0/1 signals: `input`, `media` (focused app's player Playing, 0 when it
+has players and none plays, NULL when it has none) and `inhibiting`. NULL means
+no source reported it. The collector upgrades a version 1 database in place, in
+one transaction, by adding the columns; existing rows keep NULL and read as
+before. Reasons are `active`, `idle`, `locked`, `suspended`, `disconnected`, `unknown`.
+The split is flags, not new reasons: `active` and every total keep their meaning
+for existing readers, and the split is a reading of raw signals, so its rules can
+change without rewriting rows.
 Each insert commits its boundary. `active` is false for every other reason;
 consumers should show unknown time separately. The schema is internal until
 the versioned export is available; do not treat it as the published export contract.
@@ -320,9 +416,12 @@ Operational settings are reloaded at call time from
 `$XDG_CONFIG_HOME/diurna/config.json`, falling back to
 `~/.config/diurna/config.json` when `XDG_CONFIG_HOME` is unset, empty or relative.
 Values use file > named environment > bounded defaults. The optional JSON object
-accepts `safety_seconds` (default 60, range 1–3600) and `ipc_timeout_seconds`
-(default 3, range 0.1–30). Corresponding variables are `DIURNA_SAFETY_SECONDS`
-and `DIURNA_IPC_TIMEOUT_SECONDS`.
+accepts `safety_seconds` (default 60, range 1–3600), `ipc_timeout_seconds`
+(default 3, range 0.1–30), `hands_on_seconds` (default 60, range 1–3600; read by
+`install --omarchy-shell`) and `screensaver_grace_seconds` (default 10, range
+0–3600; read by `today` and the bar). Corresponding variables are
+`DIURNA_SAFETY_SECONDS`, `DIURNA_IPC_TIMEOUT_SECONDS`, `DIURNA_HANDS_ON_SECONDS`
+and `DIURNA_SCREENSAVER_GRACE_SECONDS`.
 
 Malformed, unsafe, oversized, unknown-key or duplicate-key files fall through to
 environment values and defaults, with sanitized diagnostics. Individual invalid

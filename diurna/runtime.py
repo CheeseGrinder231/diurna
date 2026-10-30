@@ -3,6 +3,7 @@ import fcntl
 from contextlib import contextmanager
 import os
 from pathlib import Path
+import re
 import selectors
 import signal
 import socket
@@ -11,14 +12,22 @@ import time
 from .changes import Changes
 from .collector import Collector, Context, Span
 from .config import policy
-from .ipc import Lines, snapshot
+from .ipc import Lines, inhibiting, snapshot
 from .store import Store
 from .sleep import SleepDetector
 
 SECOND = 1_000_000_000
 HOOKS = {"idle": ("idle", True), "active": ("idle", False),
          "lock": ("locked", True), "unlock": ("locked", False),
-         "suspend": ("suspended", True), "resume": ("suspended", False)}
+         "suspend": ("suspended", True), "resume": ("suspended", False),
+         # The shell plugin's input-only monitor: input within the hands-on window.
+         "input": ("input", True), "noinput": ("input", False)}
+# `media` carries every MPRIS player as name:playing or name:paused.
+MEDIA = "media"
+MAX_PLAYERS = 64
+PLAYER = re.compile(r"[A-Za-z0-9._-]{1,128}:(playing|paused)")
+# Bounded control line: an event and, for media, its player tokens.
+MAX_CONTROL = 16 * 1024
 
 
 def runtime_directory():
@@ -120,30 +129,57 @@ class Clock:
 
 def flags(directory):
     result = {}
-    for flag in ("idle", "locked", "suspended"):
+    for flag in ("idle", "locked", "suspended", "input"):
         try:
             value = (directory / flag).read_text()
         except FileNotFoundError:
-            value = "0"
-        if value not in ("0", "1"):
+            # Input has no default: without the shell plugin it is unknown.
+            value = "" if flag == "input" else "0"
+        if value not in ("0", "1", "") or (value == "" and flag != "input"):
             raise ValueError("invalid hook state")
-        result[flag] = value == "1"
+        result[flag] = None if value == "" else value == "1"
     return result
 
 
-def notify(event):
+def players(tokens):
+    """{player name: playing} from name:playing / name:paused tokens."""
+    tokens = list(tokens)
+    if len(tokens) > MAX_PLAYERS or not all(PLAYER.fullmatch(t) for t in tokens):
+        raise ValueError("invalid media state")
+    result = {}
+    for token in tokens:
+        name, _, state = token.rpartition(":")
+        result[name] = result.get(name, False) or state == "playing"
+    return result
+
+
+def media(directory):
+    try:
+        return players((directory / MEDIA).read_text().split())
+    except FileNotFoundError:
+        return {}
+
+
+def notify(event, tokens=()):
     """Persist state before notification, even if the collector is restarting."""
     _, directory = paths()
-    flag, value = HOOKS[event]
-    with (directory / (flag + ".lock")).open("a") as lock:
+    if event == MEDIA:
+        players(tokens)
+        name, value = MEDIA, "\n".join(tokens)
+    elif tokens:
+        raise ValueError("only media takes players")
+    else:
+        flag, state = HOOKS[event]
+        name, value = flag, "1" if state else "0"
+    with (directory / (name + ".lock")).open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        temporary = directory / (flag + ".new")
-        temporary.write_text("1" if value else "0")
-        temporary.replace(directory / flag)
+        temporary = directory / (name + ".new")
+        temporary.write_text(value)
+        temporary.replace(directory / name)
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.settimeout(policy()["ipc_timeout_seconds"])
             sock.connect(str(directory / "control.sock"))
-            sock.sendall((event + "\n").encode())
+            sock.sendall((" ".join([event, *tokens]) + "\n").encode())
             if sock.recv(16) != b"ok\n":
                 raise RuntimeError("collector did not acknowledge hook")
 
@@ -224,9 +260,11 @@ def _loop(selector, events, control, store, clock, hypr, directory, control_path
 
     collector = Collector(clock, write,
                           Context(app_class=initial[0].get("class", ""),
-                                  workspace=initial[1], **flags(directory)))
+                                  workspace=initial[1], **flags(directory)),
+                          inhibitor=lambda: inhibiting(hypr, policy()["ipc_timeout_seconds"]))
     store.resume(collector.start)
     changes.mark()
+    collector.players = media(directory)
     collector.snapshot(*initial)
     sleep = SleepDetector()
     changes.flush()
@@ -250,6 +288,7 @@ def _loop(selector, events, control, store, clock, hypr, directory, control_path
             if not ready and quiet <= due:
                 # Only a quiet interval activates the missed-event net.
                 collector.snapshot(*snapshot(hypr, settings["ipc_timeout_seconds"]))
+                collector.players = media(directory)
                 collector.boundary(**flags(directory))
                 collector.checkpoint()
                 last_event = time.monotonic()
@@ -270,16 +309,21 @@ def _loop(selector, events, control, store, clock, hypr, directory, control_path
                         client.settimeout(settings["ipc_timeout_seconds"])
                         try:
                             raw = bytearray()
-                            while b"\n" not in raw and len(raw) < 32:
-                                chunk = client.recv(32)
+                            while b"\n" not in raw and len(raw) < MAX_CONTROL:
+                                chunk = client.recv(4096)
                                 if not chunk:
                                     break
                                 raw.extend(chunk)
-                            event = raw.decode("ascii").strip()
-                            if event not in HOOKS:
+                            event, *tokens = raw.decode("ascii").split() or [""]
+                            if event == MEDIA:
+                                try:
+                                    collector.media(players(tokens))
+                                except ValueError:
+                                    continue
+                            elif event in HOOKS and not tokens:
+                                collector.signal(*HOOKS[event])
+                            else:
                                 continue
-                            flag, value = HOOKS[event]
-                            collector.boundary(**{flag: value})
                             last_event = time.monotonic()
                             client.sendall(b"ok\n")
                         except (OSError, UnicodeError):
