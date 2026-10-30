@@ -1,5 +1,7 @@
 import argparse
+from dataclasses import asdict
 from datetime import datetime
+import json
 import os
 from pathlib import Path
 import sqlite3
@@ -22,7 +24,8 @@ def database():
 class Parser(argparse.ArgumentParser):
     def error(self, message):
         # Raw requests may carry private source text. Never echo bad arguments.
-        if sys.argv[1:2] in (["export"], ["migrate"]):
+        if sys.argv[1:2] in (["export"], ["migrate"], ["periods"],
+                              ["publish"], ["publication-status"]):
             self.exit(2, "diurna: invalid request\n")
         super().error(message)
 
@@ -37,6 +40,14 @@ def main():
     raw.add_argument("--through-start-ns", type=int, help="cap the saved source high point")
     upgrade = commands.add_parser("migrate", help="migrate existing storage while collection is stopped")
     upgrade.add_argument("--database", type=Path, required=True)
+    finished = commands.add_parser("periods", help="read-only finished screen-use JSONL")
+    finished.add_argument("--database", type=Path, required=True)
+    finished.add_argument("--start-ns", type=int, required=True)
+    finished.add_argument("--end-ns", type=int, required=True)
+    pump = commands.add_parser("publish", help="bounded finished-journal archive catch-up")
+    pump.add_argument("--database", type=Path, required=True)
+    status = commands.add_parser("publication-status", help="audit finished journal scope/retention")
+    status.add_argument("--database", type=Path, required=True)
     daemon = commands.add_parser("collect", help="collect local desktop spans")
     daemon.add_argument("--database", type=Path, default=database())
     hook = commands.add_parser("signal", help="desktop idle, lock, sleep, input or media event")
@@ -60,6 +71,31 @@ def main():
         if name == "install":
             command.add_argument("--program", help="diurna executable the bar runs")
     args = parser.parse_args()
+    if args.command in ("periods", "publish", "publication-status"):
+        try:
+            from . import publication
+            if args.command == "periods":
+                publication.export(args.database, sys.stdout.buffer, args.start_ns, args.end_ns)
+                sys.stdout.buffer.flush()
+            elif args.command == "publish":
+                print(json.dumps(asdict(publication.catch_up(args.database))))
+            else:
+                with publication.Journal(args.database) as journal:
+                    print(json.dumps(asdict(journal.scope())))
+        except (OSError, ValueError, TypeError, KeyError, IndexError, RuntimeError,
+                sqlite3.Error, OverflowError, MemoryError) as error:
+            # Keep private source values and database errors out of diagnostics.
+            if isinstance(error, BrokenPipeError):
+                fd = os.open(os.devnull, os.O_WRONLY)
+                try:
+                    os.dup2(fd, sys.stdout.fileno())
+                finally:
+                    os.close(fd)
+            if args.command == "publication-status":
+                print('{"status":"blocked","interventionRequired":true}')
+            print("diurna: finished publication blocked; intervention required", file=sys.stderr)
+            return 1
+        return 0
     if args.command in ("export", "migrate"):
         try:
             if args.command == "export":

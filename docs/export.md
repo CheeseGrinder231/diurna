@@ -150,3 +150,13 @@ behavior are unchanged. Older collectors/readers may reject schema 3. Do not
 lower `user_version`, delete identity, or strip columns as a downgrade. Roll back
 using the complete pre-upgrade backup and matching old software; any subsequent
 new history needs an explicit identity/overlap disposition as described above.
+
+## Finished screen-use journal
+
+`diurna periods` is a separate local format for immutable, finished screen-use
+occurrences. `diurna publish` advances it from committed history and
+`diurna publication-status` audits its scope and retention. Its frozen classifier,
+conservative watermark, app-only grouping and budgets are documented in
+[screen-use.md](screen-use.md). Raw export neither advances that journal nor
+asserts finality. It remains independently available while publication waits
+for a barrier or is blocked. Reads of either format never acknowledge intake.

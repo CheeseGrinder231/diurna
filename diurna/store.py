@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import sqlite3
 import stat
+import sys
 
 from . import identity
 from .collector import Span
@@ -93,6 +94,16 @@ class Store:
                  int(span.reason == "active"), span.reason,
                  _flag(span.input), _flag(span.media), _flag(span.inhibiting)))
         self.last_end = span.end_ns
+        # Derived publication owns a separate transaction/error boundary. Raw
+        # collection and its view remain usable even when this stream blocks.
+        try:
+            from .publication import advance
+            advance(self.db)
+        except Exception:
+            # This boundary includes initialization/import failures (for
+            # example unavailable policy-calendar data), not raw storage.
+            print("diurna: finished publication blocked; raw collection continues",
+                  file=sys.stderr)
 
     def close(self):
         self.db.close()
