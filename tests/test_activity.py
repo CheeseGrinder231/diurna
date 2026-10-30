@@ -286,7 +286,7 @@ class StoreTests(unittest.TestCase):
             store = Store(path)
             try:
                 store.write(Span(90, 100, "foot", "1", "active", True, None, False))
-                self.assertEqual(store.db.execute("PRAGMA user_version").fetchone(), (2,))
+                self.assertEqual(store.db.execute("PRAGMA user_version").fetchone(), (3,))
                 with self.assertRaises(sqlite3.IntegrityError):
                     store.db.execute("UPDATE spans SET input = 2")
             finally:
