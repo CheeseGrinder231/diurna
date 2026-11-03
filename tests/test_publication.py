@@ -149,7 +149,7 @@ class PublicationTests(unittest.TestCase):
 
     def test_faults_expose_old_or_complete_new_publication_and_latch_stream(self):
         for stage in ('before_sequence', 'after_sequence', 'after_journal',
-                      'before_watermark', 'after_watermark', 'before_commit', 'after_commit'):
+                      'before_watermark', 'after_watermark', 'before_commit', 'after_commit', 'after_checkpoint'):
             with self.subTest(stage=stage):
                 # A separate synthetic archive for every failure boundary.
                 path = Path(self.temporary.name) / (stage+'.db')
@@ -196,13 +196,13 @@ class PublicationTests(unittest.TestCase):
         self.assertTrue(all(isinstance(result, p.Scope) for result in results), results)
         self.assertEqual(self.journal().scope().through_sequence, 1)
 
-    def test_budget_failure_latches_while_raw_collection_export_and_views_continue(self):
+    def test_budget_wait_preserves_raw_collection_export_and_views(self):
         self.append(1, 2)
         with patch.object(p, 'MAX_ROWS', 1), redirect_stderr(io.StringIO()) as diagnostic:
             self.append(2, 3)
-        self.assertIn('raw collection continues', diagnostic.getvalue())
-        with self.assertRaises(p.PublicationBlocked):
-            p.catch_up(self.path)
+        self.assertEqual(diagnostic.getvalue(), '')
+        self.assertIsNone(self.connection().execute('SELECT error FROM screen_use_state').fetchone()[0])
+        self.assertEqual(p.catch_up(self.path).status, 'ready')
         with redirect_stderr(io.StringIO()):
             self.append(3, 4)
         out = io.BytesIO()
@@ -301,15 +301,14 @@ class PublicationTests(unittest.TestCase):
         db.rollback()
         self.assertEqual(p.catch_up(self.path).through_sequence, 0)
 
-    def test_initial_budget_failure_is_durably_blocked_and_raw_remains_available(self):
+    def test_initial_budget_wait_is_retryable_and_raw_remains_available(self):
         self.append(1, 2, publish=False)
         self.append(2, 3, publish=False)
         with patch.object(p, 'MAX_ROWS', 1):
-            with self.assertRaises(p.PublicationBlocked):
+            with self.assertRaises(p.PublicationWaiting):
                 p.catch_up(self.path)
-        # Restoring the normal budget never silently clears a failed stream.
-        with self.assertRaises(p.PublicationBlocked):
-            p.catch_up(self.path)
+        self.assertIsNone(self.connection().execute('SELECT error FROM screen_use_state').fetchone()[0])
+        self.assertEqual(p.catch_up(self.path).status, 'ready')
         output = io.BytesIO()
         raw_export(self.path, output, 1, 4)
         self.assertIn(b'"rows":2', output.getvalue())
@@ -352,10 +351,238 @@ class PublicationTests(unittest.TestCase):
     def test_sql_budget_and_oversized_domain_fail_without_force_finishing(self):
         self.append(1, 2, input_=0)
         with patch.object(p, 'MAX_SQL_STEPS', 1):
-            with self.assertRaises(p.PublicationBlocked):
+            with self.assertRaises(p.PublicationWaiting):
                 p.catch_up(self.path)
         self.assertEqual(self.connection().execute('SELECT COUNT(*) FROM screen_use_journal').fetchone()[0], 0)
+        self.assertIsNone(self.connection().execute('SELECT error FROM screen_use_state').fetchone()[0])
+        self.assertEqual(p.catch_up(self.path).status, 'ready')
         from diurna.screen_periods import DAY_NS, periods
         spans = [(1, 3*DAY_NS, 'a', 'w', 'active', None, 1, 0, 0)]
         with self.assertRaisesRegex(ValueError, 'budget'):
             periods(spans, None, max_domains=1)
+
+    def test_real_size_archive_first_write_waits_with_bounded_work_and_no_latch(self):
+        db = self.connection()
+        # A synthetic week at a deliberately high focus-switch rate. No desktop
+        # or owner archive is opened. Populate without pumping each insert.
+        with db:
+            db.executemany("""INSERT INTO spans
+                (start_ns,end_ns,app_class,workspace,active,reason,input)
+                VALUES(?,?,'a','w',1,'active',1)""",
+                ((1+i*S, 1+(i+1)*S) for i in range(100_000)))
+        with redirect_stderr(io.StringIO()) as diagnostic:
+            self.append(100_000*S+1, 100_001*S+1)
+        self.assertEqual(diagnostic.getvalue(), '')
+        state = db.execute('SELECT document,digest,error FROM screen_use_state').fetchone()
+        self.assertIsNone(state[2])
+        for _ in range(2):
+            with self.assertRaises(p.PublicationWaiting):
+                p.advance(db)
+            self.assertFalse(db.in_transaction)
+            self.assertEqual(db.execute('SELECT document,digest,error FROM screen_use_state').fetchone(), state)
+        # Count VM steps rather than making a machine-speed/wall-clock claim.
+        steps = [0]
+        exhausted = [False]
+        def budget(connection):
+            def progress():
+                steps[0] += 1000
+                exhausted[0] = steps[0] > 500_000
+                return int(exhausted[0])
+            connection.set_progress_handler(progress, 1000)
+            return exhausted
+        with patch.object(p, '_budget', side_effect=budget):
+            with self.assertRaises(p.PublicationWaiting):
+                p.advance(db)
+        self.assertFalse(exhausted[0], steps)
+        self.assertLess(steps[0], 500_000)
+
+    def test_domain_budget_wait_rolls_back_new_publication_and_retries(self):
+        from diurna.screen_periods import DAY_NS
+        self.append(1, 3*DAY_NS, publish=False)
+        self.append(3*DAY_NS, 3*DAY_NS+S, reason='unknown', publish=False)
+        # Two source rows fit, but three closed domains exceed this ceiling.
+        with patch.object(p, 'MAX_ROWS', 2):
+            with self.assertRaises(p.PublicationWaiting):
+                p.catch_up(self.path)
+        db = self.connection()
+        self.assertIsNone(db.execute('SELECT error FROM screen_use_state').fetchone()[0])
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM screen_use_journal').fetchone()[0], 0)
+        self.assertEqual(p.catch_up(self.path).through_sequence, 4)
+
+    def test_known_budget_wait_after_commit_still_latches_uncertain_publication(self):
+        self.append(1, 200*S)
+        self.append(200*S, 201*S, reason='unknown', publish=False)
+        def fail(stage):
+            if stage == 'after_commit':
+                raise p.PublicationWaiting('synthetic exception after commit')
+        with self.assertRaises(p.PublicationBlocked):
+            p.advance(self.connection(), fail)
+        with self.assertRaises(p.PublicationBlocked):
+            p.catch_up(self.path)
+
+    def test_paged_catchup_exceeds_cumulative_rows_periods_and_bytes(self):
+        from diurna.screen_periods import periods
+        source = []
+        for i in range(5000):
+            start = 1 + i*3*S
+            source.extend([[start, start+S, 'a', 'w', 'active', None, 1, 0, 0],
+                           [start+S, start+2*S, 'a', 'w', 'idle', None, 0, 0, 0],
+                           [start+2*S, start+3*S, 'a', 'w', 'unknown', None, 0, 0, 0]])
+        db = self.connection()
+        with db:
+            db.executemany('''INSERT INTO spans
+                (start_ns,end_ns,app_class,workspace,reason,title,input,media,inhibiting,active)
+                VALUES(?,?,?,?,?,?,?,?,?,?)''', [(*r, int(r[4] == 'active')) for r in source])
+        # Cumulative source, journal and serialization all exceed these budgets.
+        # Each serialized pump/read page must still fit. Reopen on every call.
+        with patch.object(p, 'MAX_ROWS', 128), patch.object(p, 'MAX_BYTES', 128*1024):
+            for _ in range(150):
+                scope = p.catch_up(self.path)
+                if scope.through_sequence == 5000:
+                    break
+            self.assertEqual(scope.through_sequence, 5000)
+            self.assertEqual(scope.original_beginning_ns, 1)
+            self.assertGreater(db.execute('SELECT COUNT(*) FROM screen_use_checkpoints').fetchone()[0], 1)
+            actual, after = [], 0
+            while after < 5000:
+                with p.Journal(self.path) as journal:
+                    entries = journal.entries(after_sequence=after, limit=100)
+                self.assertTrue(entries)
+                actual.extend(e.occurrence for e in entries)
+                after = entries[-1].sequence
+        expected = [p.occurrence(period, i, MACHINE, GENERATION)
+                    for i, period in enumerate(periods(source, source[-1][0], 6000), 1)]
+        self.assertEqual(actual, expected)
+        with db:
+            db.execute("UPDATE spans SET app_class='changed' WHERE start_ns=1")
+        with self.assertRaises(p.PublicationBlocked):
+            p.advance(db)
+        self.assertIsNotNone(db.execute('SELECT error FROM screen_use_state').fetchone()[0])
+
+    def test_checkpoint_evidence_and_missing_guards_block(self):
+        db = self.connection()
+        with patch.object(p, 'MAX_ROWS', 8):
+            for i in range(20):
+                self.append(1+i*S, 1+(i+1)*S, reason='unknown' if i%2 else 'active')
+        with db:
+            db.execute("UPDATE screen_use_checkpoints SET digest='wrong' WHERE page=1")
+        with self.assertRaises(p.PublicationBlocked):
+            p.advance(db)
+
+    def test_read_budget_reports_waiting_without_latch(self):
+        self.finished()
+        with patch.object(p, 'MAX_SQL_STEPS', 1):
+            with self.assertRaises(p.PublicationWaiting):
+                p.Journal(self.path)
+        self.assertEqual(p.catch_up(self.path).status, 'ready')
+
+    def test_lost_derived_tables_leave_raw_append_usable(self):
+        self.finished()
+        db = self.connection()
+        with db:
+            db.execute('DROP TABLE screen_use_state')
+            db.execute('DROP TABLE screen_use_seal')
+        with redirect_stderr(io.StringIO()) as diagnostic:
+            self.append(401*S, 402*S)
+        self.assertIn('raw collection continues', diagnostic.getvalue())
+        self.assertEqual(db.execute('SELECT MAX(end_ns) FROM spans').fetchone()[0], 402*S)
+
+    def test_checkpoint_transaction_fault_rolls_back_page_and_latches(self):
+        self.append(1, S, publish=False)
+        self.append(S, 2*S, reason='unknown', publish=False)
+        self.append(2*S, 3*S, publish=False)
+        def fail(stage):
+            if stage == 'after_checkpoint':
+                raise OSError('synthetic checkpoint failure')
+        db = self.connection()
+        with patch.object(p, 'MAX_ROWS', 4):
+            with self.assertRaises(p.PublicationBlocked):
+                p.advance(db, fail)
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM screen_use_checkpoints').fetchone()[0], 0)
+        self.assertEqual(db.execute('SELECT lower_ns FROM screen_use_seal').fetchone()[0], 0)
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM screen_use_journal').fetchone()[0], 0)
+
+    def test_state_byte_budget_rolls_back_and_can_retry(self):
+        db = self.connection()
+        with db:
+            db.executemany("""INSERT INTO spans
+                (start_ns,end_ns,app_class,workspace,active,reason,input)
+                VALUES(?,?,'a','w',1,'active',1)""", ((i+1,i+2) for i in range(20)))
+        with patch.object(p, 'MAX_BYTES', 1600):
+            with self.assertRaises(p.PublicationWaiting):
+                p.advance(db)
+        self.assertIsNone(db.execute('SELECT error FROM screen_use_state').fetchone()[0])
+        self.assertEqual(p.advance(db).status, 'ready')
+
+    def test_reduced_read_row_budget_waits_and_does_not_claim_corruption(self):
+        self.finished()
+        with patch.object(p, 'MAX_ROWS', 1):
+            with self.assertRaises(p.PublicationWaiting):
+                p.Journal(self.path)
+            with self.assertRaises(p.PublicationWaiting):
+                p.catch_up(self.path)
+        self.assertEqual(p.catch_up(self.path).through_sequence, 2)
+
+    def test_waiting_cli_is_distinct_from_blocked_and_has_no_finished_output(self):
+        from diurna.__main__ import main
+        self.finished()
+        for command in ('publish', 'publication-status', 'periods'):
+            arguments = ['diurna', command, '--database', str(self.path)]
+            if command == 'periods':
+                arguments += ['--start-ns', '1', '--end-ns', str(500*S)]
+            with patch('sys.argv', arguments), patch('sys.stdout') as output, \
+                    redirect_stderr(io.StringIO()) as diagnostic, patch.object(p, 'MAX_SQL_STEPS', 1):
+                self.assertEqual(main(), 2)
+            self.assertNotIn('intervention required', diagnostic.getvalue())
+            output.buffer.write.assert_not_called()
+            if command != 'periods':
+                self.assertIn('"status":"waiting"', str(output.write.call_args_list))
+        self.assertEqual(p.catch_up(self.path).through_sequence, 2)
+
+    def test_paged_screensaver_and_forward_context_match_complete_history(self):
+        from diurna.screen_periods import periods
+        source, start = [], 1
+        pattern = [('a', 'active', 1, 0, 200*S),
+                   ('a', 'active', 0, 0, 30*S),
+                   ('a', 'idle', 0, 0, S),
+                   (SCREENSAVER, 'active', 0, 0, 10*S+1),
+                   ('video', 'active', 0, 1, S),
+                   ('a', 'unknown', 0, 0, S),
+                   ('a', 'active', 0, 0, S),
+                   ('a', 'active', 1, 0, 200*S),
+                   ('a', 'idle', 0, 0, S),
+                   ('a', 'unknown', 0, 0, S)]
+        for _ in range(20):
+            for app, reason, input_, media, duration in pattern:
+                source.append([start, start+duration, app, 'w', reason, None, input_, media, 0])
+                start += duration
+        db = self.connection()
+        with db:
+            db.executemany('''INSERT INTO spans
+                (start_ns,end_ns,app_class,workspace,reason,title,input,media,inhibiting,active)
+                VALUES(?,?,?,?,?,?,?,?,?,?)''', [(*r, int(r[4] == 'active')) for r in source])
+        expected = [p.occurrence(period, i, MACHINE, GENERATION)
+                    for i, period in enumerate(periods(source, source[-1][0]), 1)]
+        with patch.object(p, 'MAX_ROWS', 16):
+            for _ in range(30):
+                scope = p.catch_up(self.path)
+                if scope.watermark_ns == source[-1][0]:
+                    break
+            self.assertEqual(scope.watermark_ns, source[-1][0])
+            actual, after = [], 0
+            while after < len(expected):
+                with p.Journal(self.path) as journal:
+                    entries = journal.entries(after, 10)
+                self.assertTrue(entries)
+                actual.extend(e.occurrence for e in entries)
+                after = entries[-1].sequence
+        self.assertEqual(actual, expected)
+
+    def test_nondictionary_state_with_matching_digest_still_latches(self):
+        self.finished()
+        db = self.connection()
+        with db:
+            db.execute('UPDATE screen_use_state SET document=?,digest=?', ('[]', p._digest('[]')))
+        with self.assertRaises(p.PublicationBlocked):
+            p.advance(db)
+        self.assertIsNotNone(db.execute('SELECT error FROM screen_use_state').fetchone()[0])

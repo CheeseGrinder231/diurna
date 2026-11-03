@@ -4,6 +4,7 @@ from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from .screen_classifier import classify
+from .publication_limits import PublicationWaiting
 
 SECOND = 1_000_000_000
 DAY_NS = 86_400 * SECOND
@@ -88,14 +89,14 @@ def periods(spans, watermark, max_domains=4096):
         if rows:
             domains += 1
             if domains > max_domains:
-                raise ValueError("grouping domain budget")
+                raise PublicationWaiting("grouping domain budget")
         if rows and watermark is not None and closure <= watermark:
             for start, end, apps in fold(rows):
                 result.append(Period(start, end, _label([start, end, apps]),
                                      tuple(sorted(apps.items(), key=lambda p: p[0].encode("utf-8"))),
                                      domain_start, closure, kind))
                 if len(result) > max_domains:
-                    raise ValueError("period row budget")
+                    raise PublicationWaiting("period row budget")
         rows, domain_start, cut = [], None, None
 
     for start, end, app, _, reason, *_ in classify(spans):

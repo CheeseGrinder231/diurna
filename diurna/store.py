@@ -8,6 +8,7 @@ import sys
 
 from . import identity
 from .collector import Span
+from .publication_limits import PublicationWaiting
 
 SCHEMA_VERSION = 3
 # Raw activity signals, added in version 2. NULL means no source reported it:
@@ -99,6 +100,9 @@ class Store:
         try:
             from .publication import advance
             advance(self.db)
+        except PublicationWaiting:
+            # A bounded retry may wait indefinitely; it never requires repair.
+            pass
         except Exception:
             # This boundary includes initialization/import failures (for
             # example unavailable policy-calendar data), not raw storage.
