@@ -271,7 +271,8 @@ def _read_state(db):
     _require(error is None, "stream blocked; intervention required")
     _require(_digest(document) == digest, "corrupt journal state")
     state = json.loads(document)
-    _require(state.get("format") == FORMAT and state.get("rule") == RULE,
+    _require(isinstance(state, dict) and state.get("format") == FORMAT
+             and state.get("rule") == RULE,
              "unsupported rule")
     page = state["page"]
     _require(db.execute("SELECT singleton,lower_ns FROM screen_use_seal LIMIT 2").fetchall()

@@ -577,3 +577,12 @@ class PublicationTests(unittest.TestCase):
                 actual.extend(e.occurrence for e in entries)
                 after = entries[-1].sequence
         self.assertEqual(actual, expected)
+
+    def test_nondictionary_state_with_matching_digest_still_latches(self):
+        self.finished()
+        db = self.connection()
+        with db:
+            db.execute('UPDATE screen_use_state SET document=?,digest=?', ('[]', p._digest('[]')))
+        with self.assertRaises(p.PublicationBlocked):
+            p.advance(db)
+        self.assertIsNotNone(db.execute('SELECT error FROM screen_use_state').fetchone()[0])
