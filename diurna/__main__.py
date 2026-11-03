@@ -149,9 +149,10 @@ def main():
             print(f"diurna: {error}", file=sys.stderr)
             return 1
         print(message)
-        restart = "omarchy-restart-waybar" if args.target == "waybar" \
-            else "omarchy-shell shell reloadConfig"
-        print(f"Reload the bar to apply: {restart}")
+        if args.target == "waybar":
+            print("Restart Waybar to apply: omarchy-restart-waybar")
+        else:
+            print("Restart the shell to apply the plugin and bar changes: omarchy-restart-shell")
         return 0
     try:
         if args.command == "collect":
