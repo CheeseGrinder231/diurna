@@ -36,6 +36,9 @@ class ZipappTests(unittest.TestCase):
                                          "--omarchy-shell", "--config", str(config)],
                                         env=environment, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("Restart the shell to apply the plugin and bar changes: "
+                              "omarchy-restart-shell", result.stdout)
+                self.assertNotIn("reloadConfig", result.stdout)
                 if command == "install":
                     plugin = directory / "plugins/diurna.activity/Service.qml"
                     self.assertTrue(plugin.is_file())

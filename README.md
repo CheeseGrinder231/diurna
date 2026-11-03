@@ -85,7 +85,7 @@ After installing the executable and unit above, run:
 
 ```bash
 diurna install --omarchy-shell
-omarchy-shell shell reloadConfig
+omarchy-restart-shell
 ```
 
 This installs the bar module and the `diurna.activity` service plugin under
@@ -112,7 +112,20 @@ are disabled, Diurna uses 150 seconds. The hands-on window is
 `hands_on_seconds` from Diurna's config, in whole seconds. Reinstall after
 changing those settings; remove the unchanged plugin with uninstall first. To
 upgrade a plugin installed by an earlier Diurna, uninstall with the new
-executable, then install. Uninstall recognizes the earlier plugin's unchanged files. The monitor respects compositor
+executable, then install and restart the shell:
+
+```bash
+diurna uninstall --omarchy-shell
+diurna install --omarchy-shell
+omarchy-restart-shell
+```
+
+Uninstall recognizes the earlier plugin's unchanged files. Restarting the shell
+loads the updated plugin code and sends its startup signals. `reloadConfig` can
+leave the earlier plugin running, so it is insufficient after an upgrade; new
+activity signals may be missing until the shell restarts.
+
+The monitor respects compositor
 idle inhibitors. Omarchy's Stay Awake switch disables its own idle service; it
 does not disable Diurna's separate monitor.
 
@@ -263,7 +276,7 @@ Add the module, after installing the executable as above:
 diurna install --waybar          # Waybar: $XDG_CONFIG_HOME/waybar/config.jsonc (or config)
 omarchy-restart-waybar
 diurna install --omarchy-shell   # Omarchy 4 bar: ~/.config/omarchy/shell.json
-omarchy-shell shell reloadConfig
+omarchy-restart-shell
 ```
 
 Install inserts the module at the start of `modules-right` (the first bar of a
