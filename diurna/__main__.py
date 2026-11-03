@@ -9,6 +9,7 @@ import sys
 import time
 
 from . import bar
+from .publication_limits import PublicationWaiting
 from .export import ERROR as EXPORT_ERROR, export
 from .store import migrate
 from .install import InstallError, install, uninstall
@@ -82,6 +83,11 @@ def main():
             else:
                 with publication.Journal(args.database) as journal:
                     print(json.dumps(asdict(journal.scope())))
+        except PublicationWaiting:
+            if args.command in ("publish", "publication-status"):
+                print('{"status":"waiting","interventionRequired":false}')
+            print("diurna: finished publication waiting; resource budget", file=sys.stderr)
+            return 2
         except (OSError, ValueError, TypeError, KeyError, IndexError, RuntimeError,
                 sqlite3.Error, OverflowError, MemoryError) as error:
             # Keep private source values and database errors out of diagnostics.

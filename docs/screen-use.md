@@ -160,7 +160,7 @@ facts/IDs; event timestamps cannot be used as feed progress.
 ## Transactions, integrity and resource bounds
 
 `screen_use_state` and `screen_use_journal` are additive tables under their own
-`diurna.screen-use-journal-v1` format; raw `user_version` stays 3. An additive
+`diurna.screen-use-journal-v2` format; raw `user_version` stays 3. An additive
 `screen_use_guard` column on archive identity detects lost publication tables
 instead of silently reminting them. First-use initialization establishes the
 guard atomically before replay; no occurrence is advertised during it.
@@ -174,22 +174,53 @@ accidental state damage; it is not authentication against an adversary able to
 rewrite the entire archive and checksums. Source replacement/tampering during
 file-open and divergent producers of copied archives are outside this contract.
 
-The implementation deliberately replays and audits the **complete bounded
-archive** to detect edits/deletion/regrouping, rather than discarding published
-source evidence. Per pump/read limits: 4096 source rows, 4096 domains/periods,
-4096 bytes per raw string, 16 MiB each for source serialization, state document,
-journal/output, and 5,000,000 SQLite VM steps checked per 1000 steps. SQLite
-writer timeout is the collector connection's existing timeout (five seconds),
-catch-up/read timeout one second. App folding has bounded quadratic work within
-the source-row ceiling. These ceilings limit initial usable archive size as
-well as unresolved suffix size; this version has no streaming large-archive
-catch-up. Reaching a ceiling explicitly blocks, with no truncation, age-out,
-forced finish, silent reset or garbage collection. Repeated healthy replay is
-idempotent. No code reads wall-clock age for publication.
+The pump reads a bounded source prefix beginning at the last sealed checkpoint,
+using the source start index. Per pump/read limits: 4096 source rows per page,
+4096 domains/periods per page, 4096 bytes per raw string, 16 MiB each for page
+source serialization, state/checkpoint document, journal page/output, and
+5,000,000 SQLite VM steps checked per 1000 steps. SQLite writer timeout is the
+collector connection's existing timeout (five seconds), catch-up/read timeout
+one second. App folding has bounded quadratic work within the source-page
+ceiling. No code reads wall-clock age for publication.
+
+At half the source-row ceiling, a pump can retire a prefix at a committed
+classifier barrier **only if** classified inactivity immediately precedes that
+barrier, or a positive gap proves the domain closure. Thus an input barrier
+inside a continuous active grouping domain never splits it. The committed
+barrier row is retained in both the sealed evidence and the next page's suffix;
+it proves closure and resets forward-away interpretation. Checkpoints retain
+all accepted raw observations, frozen classification evidence, qualified
+identity, sequence base and page journal digest. Checkpoint documents form a
+SHA-256 chain whose head is in current state. Sequence allocation remains
+global and contiguous. A pump advances one page, so repeat catch-up to drain an
+archive; a `ready` result need not have reached the latest raw endpoint.
+
+SQLite guards enforce append-only source insertion, and latch source edits or
+deletions and journal/checkpoint edits or deletions. Guard presence is audited
+on each open/pump. This permits sealed pages to stop replaying old raw rows on
+every write. Ordinary raw append depends only on the raw table even if derived
+tables are lost. Reads audit the current suffix, and reconstruct each requested
+sealed page from its checksummed evidence and frozen classifier before emitting
+its occurrences. Reads are paginated by publication sequence; wide exports can
+wait at their output or VM ceiling. A bounded read may audit adjacent pages.
+Checksums and SQLite guards protect accidental damage and ordinary SQL edits;
+an adversary able to replace guards, source and matching evidence is outside
+the integrity contract. The v2 storage format refuses an existing v1 journal;
+no automatic reminting, latch clearing or migration of published identity occurs.
+The held installation with no journal tables initializes v2 directly.
+
+A resource ceiling raises `PublicationWaiting`, rolls back all work from that
+pump and **never writes a durable latch**. This includes source/journal/state
+bytes, row/domain/period/output ceilings, and an interrupt known to come from
+our SQLite VM budget. It is distinct from storage errors and arbitrary SQLite
+interrupts. A suffix with no safe retirement point may wait indefinitely:
+there is no truncation, age-out, forced finish, silent reset or garbage
+collection. Restoring sufficient resources permits a later retry. Repeated
+healthy replay is idempotent.
 
 Raw `Store.write()` commits first, then calls publication under a separate
 transaction/error boundary. Failure leaves raw storage/views/export usable and
-prints a sanitized diagnostic. Catch-up is also explicit. Publication faults
+prints a sanitized diagnostic. Catch-up is also explicit. Corruption and storage faults
 roll back allocation, journal and W together, then attempt a separate durable
 blocked latch. Even an uncertain commit (including an injected post-commit
 failure) blocks; old durable state or the complete new publication can remain,
@@ -202,8 +233,9 @@ stream, reset identity or issue replacement IDs.
 Edited/deleted accepted source rows, mutated published payload/grouping,
 unsupported rules, corrupt/lost identity/journal/pending state and exhausted
 sequence require intervention. The collector never clears a blocked latch.
-Keep a complete private backup; recovery, budgets and future format migration
-require an explicit inspected repair, outside this slice. Nothing here changes
+Keep a complete private backup; corruption recovery and future format migration
+require an explicit inspected repair, outside this slice. Budget waits do not
+require intervention. Nothing here changes
 live owner data, installs software or claims a working deployment.
 
 ## Commands and typed consumer interface
@@ -222,8 +254,13 @@ A healthy scope reports rule/format, machine, generation, status `ready`, nullab
 `watermark_ns`, numeric `through_sequence`, `retention_floor_sequence: 1`,
 `original_beginning_ns` (NULL for empty source), and `retained_all: true`.
 A NULL W means waiting for evidence, even if raw history is old. `ready` means
-healthy storage, not that the active suffix is finished. Status failure returns
-`{"status":"blocked","interventionRequired":true}` and a nonzero exit.
+healthy storage, not that the active suffix is finished. Budget waits from `publish` or `publication-status` return
+`{"status":"waiting","interventionRequired":false}` with exit 2; `periods`
+returns exit 2 with no output. These outcomes make no integrity or completion
+claim and never clear an existing latch. Integrity/storage failure returns
+`{"status":"blocked","interventionRequired":true}` from status and exit 1.
+Raw commits suppress budget-wait diagnostics, so a large unresolved suffix does
+not print an intervention warning on every write.
 
 Finished JSONL contains one `type: scope` object with those scope fields, zero
 or more `type: occurrence` records with decimal-string `sequence` and the closed

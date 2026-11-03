@@ -497,9 +497,11 @@ diurna periods --database PRIVATE_ARCHIVE --start-ns POSITIVE_START --end-ns END
 
 These commands use explicit existing private schema-3 archives. Finished reads
 never advance publication or acknowledge intake; all published history is
-retained. The initial implementation audits complete archives within 4096 source
-rows and explicit byte/processing ceilings. Reaching a ceiling or finding
-changed/corrupt history blocks the finished stream for intervention, without
-aging out its suffix. See [the frozen screen-use contract](docs/screen-use.md)
+retained. Each pump replays at most 4096 source rows from a sealed checkpoint;
+repeat `publish` to catch up a large archive. Pages retire only at a classifier
+reset that also closes a grouping domain. An unresolved suffix or a resource
+ceiling reports `waiting` (command exit 2), without a durable latch or a repair
+requirement. Changed/corrupt history still blocks for intervention. Nothing
+ages out the suffix or forces a finish. See [the frozen screen-use contract](docs/screen-use.md)
 for exact occurrence vectors, seal proof, recovery limits and typed journal
 interface. No service, sharing transport or live installation is added.
