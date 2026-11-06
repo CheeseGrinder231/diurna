@@ -1,6 +1,104 @@
-# Diurna: screen time for Omarchy
+# Diurna - Omarchy Screen Time
 
 Named after *Acta Diurna*, Rome's daily record. Screen time for Omarchy (Hyprland): what you did on the computer, recorded locally from desktop events.
+
+## Install with Omarchy
+
+On Omarchy Quattro with the built-in bar, install and enable the plugin with:
+
+```bash
+omarchy plugin add https://github.com/CheeseGrinder231/diurna --enable
+```
+
+Review Omarchy's trust prompt before accepting. Enabling **Diurna - Omarchy
+Screen Time** starts collection and adds the screen-time widget to the right
+side of the bar. Click it for today's activity and timeline. No separate build,
+executable installation, systemd setup or configuration-editing command is
+needed for a new installation. The permanent plugin ID is `diurna.activity`.
+
+Dependencies: Omarchy Quattro's plugin manager, built-in `qs.Ui` bar components,
+Quickshell (`QtQuick`, `Quickshell.Io`, `Quickshell.Wayland` and
+`Quickshell.Services.Mpris`), Hyprland, Python 3.10+ with its standard library
+(including SQLite and curses), and Omarchy's `omarchy-launch-or-focus-tui`
+terminal launcher. These are runtime dependencies, not downloaded by Diurna.
+There are no pip packages, privileged setup steps or network calls in the
+collector. A missing Python/runtime dependency leaves the widget unavailable;
+the plugin does not install packages or change security settings.
+
+Omarchy clones the repository under
+`~/.config/omarchy/plugins/diurna.activity`. The service runs `plugin.py` directly
+from that checkout as a managed child of Quickshell. It writes only Diurna's
+private state/runtime files, never a systemd unit, installed executable or user
+configuration. Omarchy manages the enabled state and widget placement through
+its normal plugin commands. Existing Diurna config and recorded history remain
+in their usual XDG locations.
+
+The idle threshold follows the first enabled screensaver/lock timeout in
+`~/.config/omarchy/shell.json`, with a 150-second fallback. The hands-on window follows Diurna's
+`hands_on_seconds` setting (default 60). Both are read when the service loads;
+restart the shell after changing them. The same input/media classification and
+lock-state limitation described below apply.
+
+### Disable, remove and update
+
+```bash
+omarchy plugin disable diurna.activity  # stop this plugin's collector and remove its widget
+omarchy plugin enable diurna.activity   # start again
+omarchy plugin remove diurna.activity   # disable and remove the plugin checkout
+```
+
+Disabling or removing the plugin stops its owned child processes. It preserves
+`~/.config/diurna/config.json` and the database under
+`$XDG_STATE_HOME/diurna` (default `~/.local/state/diurna`). Remove stored history
+only as a separate, deliberate action. No uninstall script deletes it.
+
+Quickshell can kill a child immediately while destroying a plugin, including on
+shell exit or restart. Already committed spans remain intact; the current
+uncommitted span may be lost, normally at most `safety_seconds` (default 60).
+The next collector records that gap as unknown, never inventing app activity.
+This mode runs while the Omarchy shell/plugin is running, not as an independent
+login service. Use the manual systemd installation below if that independence
+is required.
+
+To update, use the plugin manager, then restart the shell to load the new QML
+and Python source. A configuration reload alone can keep the old service alive:
+
+```bash
+omarchy plugin update diurna.activity
+omarchy-restart-shell
+```
+
+Review/preserve any local source edits before updating or removing the checkout;
+do not force an overwrite. Diurna does not modify its checkout at runtime.
+
+### Existing manual installations
+
+The old generated plugin uses the same ID. Before adding the repository, run
+`diurna uninstall --omarchy-shell` with the existing executable. It removes
+unchanged generated assets and its old command widget; modified files are kept
+for you to review and move aside. Do not run the legacy installer over a
+repository managed by `omarchy plugin`.
+
+If your manual service uses a custom database or a different XDG state path,
+stop/disable it and reconcile the paths **before enabling** the marketplace
+plugin. The session probe below protects against an already-running collector,
+but cannot prevent an older custom-database collector starting concurrently.
+
+An existing collector keeps its database lock: the plugin waits without opening
+that database, and also defers if another Diurna session control socket is live.
+It never stops, disables or replaces your manual service. To switch collection
+ownership, explicitly run `systemctl --user disable --now diurna.service`.
+The plugin then takes over the default database. If your old service used a
+custom database/XDG state path, reconcile that path before switching; the plugin
+uses the shell's XDG environment. Keep the original history for rollback.
+
+While the manual service remains running, disabling the marketplace plugin
+stops its own child/waiter only; the manual service continues recording.
+For complete removal of a manual installation, stop/disable `diurna.service`,
+run the matching `diurna uninstall --omarchy-shell` or `--waybar` command, then
+remove only the executable and unit you installed and run
+`systemctl --user daemon-reload`. Review customized units/files before removing
+them. Stored spans and Diurna configuration are retained.
 
 ## Why
 
@@ -45,6 +143,8 @@ The shell plugin also has a headless QML behavior test, required in CI:
 
 ```bash
 python3 scripts/test_shell_plugin.py --check-mutations
+python3 scripts/test_marketplace_service.py
+python3 scripts/test_marketplace_widget.py
 ```
 
 This needs Qt 6's `qmltestrunner`, QtQuick and QtTest (Arch: `qt6-declarative`;
@@ -59,14 +159,25 @@ notification (and the input monitor's `respectInhibitors: false`) in scratch and
 require the behavior assertions to fail. The
 collector and built artifact still require only Python's standard library.
 
+The marketplace checks use fake native processes, desktop monitors and bar
+types; they do not launch a collector or inspect a real desktop. The checked-in
+`plugin/Activity.qml` is derived from the existing activity template so legacy
+installations remain byte-compatible. After editing that template, run
+`python3 scripts/build_plugin.py`; `--check` verifies the committed result.
+
 ### Manual installation
 
 Build the collector using the commands above, then install the artifact and unit:
 
 ```bash
 install -Dm755 "$TMPDIR/diurna.pyz" "$HOME/.local/bin/diurna"
-install -Dm644 packaging/diurna.service "$HOME/.config/systemd/user/diurna.service"
+mkdir -p "$HOME/.config/systemd/user"
+cp -i packaging/diurna.service "$HOME/.config/systemd/user/diurna.service"
 ```
+
+`cp -i` asks before replacing an existing unit. Decline and compare/merge any
+custom settings unless you explicitly intend to replace them. The following
+manual integrations are alternatives to the repository-managed plugin above.
 
 #### Omarchy 3: hypridle
 

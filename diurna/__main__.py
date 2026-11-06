@@ -51,6 +51,8 @@ def main():
     status.add_argument("--database", type=Path, required=True)
     daemon = commands.add_parser("collect", help="collect local desktop spans")
     daemon.add_argument("--database", type=Path, default=database())
+    daemon.add_argument("--wait-for-lock", action="store_true",
+                        help="wait for an existing collector to release this database")
     hook = commands.add_parser("signal", help="desktop idle, lock, sleep, input or media event")
     hook.add_argument("event", choices=(*HOOKS, MEDIA))
     hook.add_argument("players", nargs="*", metavar="PLAYER:STATE",
@@ -162,7 +164,7 @@ def main():
         return 0
     try:
         if args.command == "collect":
-            serve(args.database)
+            serve(args.database, wait_for_lock=args.wait_for_lock)
         else:
             notify(args.event, args.players)
     except (OSError, ValueError, RuntimeError, KeyError, sqlite3.Error):

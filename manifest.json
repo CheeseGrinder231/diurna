@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "diurna.activity",
+  "name": "Diurna - Omarchy Screen Time",
+  "version": "1.2.0",
+  "author": "CheeseGrinder231",
+  "license": "MIT",
+  "description": "Local screen time for Omarchy and Hyprland: active time, idle time, app usage and a daily timeline. No account or server.",
+  "kinds": ["service", "bar-widget"],
+  "entryPoints": {
+    "service": "plugin/Service.qml",
+    "barWidget": "plugin/BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Diurna - Screen Time",
+    "description": "Today's local screen time; click for activity by app and a daily timeline.",
+    "category": "Productivity",
+    "aliases": ["diurna", "screen time", "activity"],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}

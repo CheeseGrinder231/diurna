@@ -184,13 +184,45 @@ def notify(event, tokens=()):
                 raise RuntimeError("collector did not acknowledge hook")
 
 
-def serve(database):
+def session_collector_running():
+    """Defer to existing manual collectors, including custom database paths.
+
+    An empty connection is a read-only liveness probe: it sends no hook and
+    neither reads nor replaces the socket. Check other session paths as well
+    because session discovery may fall back from a missing/stale signature.
+    """
+    directory = runtime_directory() / "diurna"
+    signature = os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+    if signature:
+        valid_signature(signature)
+    preferred = directory / signature / "control.sock" if signature else None
+    candidates = ([preferred] if preferred else []) + [
+        path for path in sorted(directory.glob("*/control.sock")) if path != preferred]
+    for path in candidates:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+            probe.settimeout(policy()["ipc_timeout_seconds"])
+            try:
+                probe.connect(str(path))
+            except (FileNotFoundError, ConnectionRefusedError):
+                continue  # A killed collector can leave its socket path behind.
+            return True
+    return False
+
+
+def serve(database, wait_for_lock=False):
     os.umask(0o077)
     # Lock the database, not just the session socket: two instances must never
     # append overlapping spans into one store.
     database.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     with database.with_name(database.name + ".lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # A shell-owned collector may wait behind an existing manual service.
+        # Do not open the store or install signal handlers until ownership is
+        # acquired: SIGTERM can stop a waiting process without touching data.
+        fcntl.flock(lock, fcntl.LOCK_EX | (0 if wait_for_lock else fcntl.LOCK_NB))
+        if wait_for_lock and session_collector_running():
+            # The shell retries later. Never unlink a different collector's
+            # control socket merely because it uses another database.
+            return
         _serve(database)
 
 

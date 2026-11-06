@@ -32,7 +32,10 @@ jobs:
           if [ "$EVENT_NAME" = pull_request ]; then
             if git cat-file -e "$BASE_SHA^{commit}" && \
               git diff --quiet "$BASE_SHA" HEAD -- diurna/shell_plugin.py \
-              diurna/shell_plugin scripts/test_shell_plugin.py tests/qml .github/workflows/verify.yml; then
+              diurna/shell_plugin plugin manifest.json plugin.py scripts/build_plugin.py \
+              scripts/test_shell_plugin.py scripts/test_marketplace_service.py \
+              scripts/test_marketplace_widget.py tests/qml tests/qml_marketplace_service \
+              tests/qml_marketplace_widget .github/workflows/verify.yml; then
               run=false
             fi
           fi
@@ -50,7 +53,10 @@ jobs:
           fi
       - name: Shell plugin behavior and mutation checks
         if: steps.plugin.outputs.run == 'true'
-        run: python3 scripts/test_shell_plugin.py --check-mutations
+        run: |
+          python3 scripts/test_shell_plugin.py --check-mutations
+          python3 scripts/test_marketplace_service.py
+          python3 scripts/test_marketplace_widget.py
       - name: Build standalone collector
         run: |
           python3 scripts/build.py --output "$TMPDIR/diurna.pyz"
