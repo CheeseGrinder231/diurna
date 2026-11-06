@@ -47,7 +47,7 @@ jobs:
             privilege=()
             if [ "$(id -u)" -ne 0 ]; then privilege=(sudo); fi
             "${privilege[@]}" apt-get update
-            "${privilege[@]}" apt-get install -y --no-install-recommends qt6-declarative-dev-tools \
+            "${privilege[@]}" apt-get install -y --no-install-recommends jq qt6-declarative-dev-tools \
               qml6-module-qtquick qml6-module-qtquick-window qml6-module-qttest \
               qml6-module-qtqml qml6-module-qtqml-workerscript
           fi

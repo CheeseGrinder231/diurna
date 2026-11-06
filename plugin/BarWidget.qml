@@ -50,14 +50,18 @@ BarWidget {
     }
 
     function shellQuote(value) {
-        // Omarchy's TUI launcher joins its argv into a shell command.
+        // Omarchy's launch-or-focus helper evaluates one launch command.
         return "'" + String(value).replace(/'/g, "'\\''") + "'"
     }
 
     function openToday() {
+        // TUI.float is an exact match in Omarchy's floating window rule. Keep
+        // that class for placement, but identify our window by its own title.
         Quickshell.execDetached([
-            "omarchy-launch-or-focus-tui", "--app-id=TUI.float",
-            "python3", "-B", shellQuote(runner), "today", "--watch"
+            "omarchy-launch-or-focus", "^Diurna Screen Time$",
+            "uwsm-app -- xdg-terminal-exec --app-id=TUI.float "
+                + "--title='Diurna Screen Time' -e python3 -B "
+                + shellQuote(runner) + " today --watch"
         ])
     }
 

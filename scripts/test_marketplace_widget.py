@@ -11,6 +11,23 @@ import tempfile
 from test_shell_plugin import runner
 
 
+def check_focus_identity(pattern):
+    # Exact selector from omacom/omarchy d5b32d24d37af8f0376a67d98531bb2da629824b,
+    # bin/omarchy-launch-or-focus:13. Evaluate only synthetic window metadata.
+    selector = r'.[]|select((.class|test("\\b" + $p + "\\b";"i")) or (.title|test("\\b" + $p + "\\b";"i")))|.address'
+    unrelated = {"class": "TUI.float", "title": "Package manager", "address": "0x1"}
+    browser = {"class": "chromium", "title": "Notes about Diurna Screen Time", "address": "0x2"}
+    diurna = {"class": "TUI.float", "title": "Diurna Screen Time", "address": "0x3"}
+    for clients, expected in (([unrelated], []), ([unrelated, browser], []),
+                              ([unrelated, browser, diurna], ["0x3"])):
+        result = subprocess.run(["jq", "-r", "--arg", "p", pattern, selector],
+                                input=json.dumps(clients), capture_output=True, text=True,
+                                check=True)
+        if result.stdout.splitlines() != expected:
+            raise SystemExit("Diurna focus identity selected an unrelated window")
+    print("Focus selector ignores unrelated TUI.float windows and reuses only Diurna.")
+
+
 def main():
     root = Path(__file__).resolve().parents[1]
     with tempfile.TemporaryDirectory(prefix="diurna-widget-test-") as temporary:
@@ -34,13 +51,18 @@ def main():
         if len(launches) != 1:
             raise SystemExit("Missing launcher argument proof")
         launch = launches[0]
-        # omarchy-launch-or-focus-tui builds this command before handing it to
-        # omarchy-launch-or-focus. Parse only; do not execute it.
-        recovered = shlex.split("omarchy-launch-tui " + " ".join(launch["argv"][1:]))
-        expected = ["omarchy-launch-tui", "--app-id=TUI.float", "python3", "-B",
+        # Parse the helper's evaluated command without executing it. The exact
+        # TUI.float class retains Omarchy's float/center/size rules; the title
+        # identifies Diurna independently of other floating terminal windows.
+        if launch["argv"][:2] != ["omarchy-launch-or-focus", "^Diurna Screen Time$"]:
+            raise SystemExit("Unexpected timeline focus command")
+        recovered = shlex.split(launch["argv"][2])
+        expected = ["uwsm-app", "--", "xdg-terminal-exec", "--app-id=TUI.float",
+                    "--title=Diurna Screen Time", "-e", "python3", "-B",
                     str(staging / "plugin.py"), "today", "--watch"]
-        if recovered != expected or launch["runner"] != expected[4]:
+        if recovered != expected or launch["runner"] != expected[8]:
             raise SystemExit(f"Launcher argument mismatch: {recovered!r}")
+        check_focus_identity(launch["argv"][1])
         print("Launcher recovers the exact runner path and arguments.")
     return 0
 

@@ -102,11 +102,12 @@ TestCase {
     }
     function test_open_today_quotes_launcher_path() {
         Fixture.button.pressed(Qt.LeftButton)
-        compare(Fixture.detachedCommands, [["omarchy-launch-or-focus-tui", "--app-id=TUI.float",
-            "python3", "-B", plugin.shellQuote(plugin.runner), "today", "--watch"]])
+        compare(Fixture.detachedCommands, [["omarchy-launch-or-focus", "^Diurna Screen Time$",
+            "uwsm-app -- xdg-terminal-exec --app-id=TUI.float --title='Diurna Screen Time' -e python3 -B "
+                + plugin.shellQuote(plugin.runner) + " today --watch"]])
         compare(plugin.shellQuote("space's $dollar;name"), "'space'\\''s $dollar;name'")
-        // The Python harness checks the exact argv recovered after the upstream
-        // launcher joins its arguments. This never invokes a shell or desktop.
+        // The Python harness checks the evaluated command's arguments and the
+        // upstream focus selector using synthetic clients, never a desktop.
         console.log("DIURNA_LAUNCH:" + JSON.stringify({argv: Fixture.detachedCommands[0], runner: plugin.runner}))
     }
 }

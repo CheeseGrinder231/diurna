@@ -19,8 +19,10 @@ needed for a new installation. The permanent plugin ID is `diurna.activity`.
 Dependencies: Omarchy Quattro's plugin manager, built-in `qs.Ui` bar components,
 Quickshell (`QtQuick`, `Quickshell.Io`, `Quickshell.Wayland` and
 `Quickshell.Services.Mpris`), Hyprland, Python 3.10+ with its standard library
-(including SQLite and curses), and Omarchy's `omarchy-launch-or-focus-tui`
-terminal launcher. These are runtime dependencies, not downloaded by Diurna.
+(including SQLite and curses), and Omarchy's `omarchy-launch-or-focus`,
+`uwsm-app` and `xdg-terminal-exec` launchers. These are runtime dependencies,
+not downloaded by Diurna. The timeline keeps Omarchy's `TUI.float` window styling
+but uses the exact title `Diurna Screen Time` to avoid focusing unrelated TUIs.
 There are no pip packages, privileged setup steps or network calls in the
 collector. A missing Python/runtime dependency leaves the widget unavailable;
 the plugin does not install packages or change security settings.
@@ -147,7 +149,8 @@ python3 scripts/test_marketplace_service.py
 python3 scripts/test_marketplace_widget.py
 ```
 
-This needs Qt 6's `qmltestrunner`, QtQuick and QtTest (Arch: `qt6-declarative`;
+This needs `jq` for the synthetic launcher-matching regression, plus Qt 6's
+`qmltestrunner`, QtQuick and QtTest (Arch: `qt6-declarative`;
 Ubuntu: `qt6-declarative-dev-tools`, `qml6-module-qtquick`,
 `qml6-module-qtquick-window`, `qml6-module-qttest`, `qml6-module-qtqml` and
 `qml6-module-qtqml-workerscript`). Quickshell and a desktop session are not
