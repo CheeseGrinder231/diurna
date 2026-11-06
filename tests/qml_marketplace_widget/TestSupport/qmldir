@@ -1,0 +1,2 @@
+module TestSupport
+singleton Fixture 1.0 Fixture.qml
