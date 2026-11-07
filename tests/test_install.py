@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import re
 import tempfile
@@ -93,6 +94,81 @@ class InstallTests(unittest.TestCase):
         self.assertFalse((self.directory / "config.jsonc.diurna-backup").exists())
         self.assertIn("not installed", install.uninstall("waybar", path))
         self.assertEqual(path.read_bytes(), original)
+
+    def test_new_backups_are_private_for_both_targets_and_permissive_umasks(self):
+        for target, original in (("waybar", WAYBAR), ("omarchy-shell", SHELL)):
+            for mode in (0o600, 0o640, 0o644):
+                for mask in (0o000, 0o022, 0o077):
+                    with self.subTest(target=target, mode=oct(mode), umask=oct(mask)):
+                        folder = self.directory / f"{target}-{mode:o}-{mask:o}"
+                        folder.mkdir(mode=0o755)
+                        path = folder / "config.json"
+                        data = original.replace("\n", "\r\n").encode()
+                        path.write_bytes(data)
+                        path.chmod(mode)
+                        backup = path.with_name(path.name + install.BACKUP_SUFFIX)
+                        previous = os.umask(mask)
+                        try:
+                            install.install(target, path, PROGRAM)
+                        finally:
+                            os.umask(previous)
+                        self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
+                        self.assertEqual(backup.read_bytes(), data)
+                        self.assertEqual(path.stat().st_mode & 0o777, mode)
+                        self.assertIn("already installed", install.install(target, path, PROGRAM))
+                        self.assertEqual(backup.stat().st_mode & 0o777, 0o600)
+                        install.uninstall(target, path)
+                        self.assertEqual(path.read_bytes(), data)
+                        self.assertEqual(path.stat().st_mode & 0o777, mode)
+                        self.assertFalse(backup.exists())
+
+    def test_backup_is_private_before_publication_and_failure_leaves_config_unchanged(self):
+        path = self.write("config.jsonc", WAYBAR)
+        path.chmod(0o600)
+        backup = path.with_name(path.name + install.BACKUP_SUFFIX)
+
+        def fail_publication(source, destination):
+            self.assertEqual(Path(source).stat().st_mode & 0o777, 0o600)
+            self.assertEqual(Path(source).read_bytes(), path.read_bytes())
+            self.assertEqual(Path(destination), backup)
+            self.assertFalse(backup.exists())
+            raise OSError("synthetic publication failure")
+
+        with patch.object(install.os, "link", side_effect=fail_publication) as publish:
+            with self.assertRaisesRegex(OSError, "synthetic publication failure"):
+                install.install("waybar", path, PROGRAM)
+        publish.assert_called_once()
+        self.assertEqual(path.read_text(), WAYBAR)
+        self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(list(self.directory.iterdir()), [path])
+
+    def test_backup_created_concurrently_is_not_overwritten(self):
+        path = self.write("config.jsonc", WAYBAR)
+        backup = path.with_name(path.name + install.BACKUP_SUFFIX)
+        real_link = os.link
+
+        def race_publication(source, destination):
+            backup.write_text("keep this existing backup")
+            return real_link(source, destination)
+
+        with patch.object(install.os, "link", side_effect=race_publication):
+            with self.assertRaises(FileExistsError):
+                install.install("waybar", path, PROGRAM)
+        self.assertEqual(backup.read_text(), "keep this existing backup")
+        self.assertEqual(path.read_text(), WAYBAR)
+        self.assertEqual(set(self.directory.iterdir()), {path, backup})
+
+    def test_new_backup_refuses_a_dangling_symlink(self):
+        path = self.write("config.jsonc", WAYBAR)
+        backup = path.with_name(path.name + install.BACKUP_SUFFIX)
+        other = self.directory / "not-the-backup"
+        backup.symlink_to(other)
+        with self.assertRaises(FileExistsError):
+            install.install("waybar", path, PROGRAM)
+        self.assertTrue(backup.is_symlink())
+        self.assertFalse(other.exists())
+        self.assertEqual(path.read_text(), WAYBAR)
+        self.assertEqual(set(self.directory.iterdir()), {path, backup})
 
     def test_waybar_edits_after_install_survive_uninstall_and_keep_backup(self):
         path = self.write("config.jsonc", WAYBAR)

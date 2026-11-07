@@ -402,6 +402,8 @@ module runs the executable that ran `install` (override with `--program`). Use
 `diurna uninstall --waybar` or `--omarchy-shell` removes exactly what install added.
 When nothing else changed, the file is byte-identical to the backup and the backup
 is deleted; when the file was edited since, those edits stay and the backup is kept.
+New backups are created owner-only before any configuration contents are written.
+Existing backups are left unchanged; review their permissions if made by an older version.
 Install refuses to overwrite a kept backup that differs from the current file.
 
 The Omarchy 4 bar (omarchy-shell) re-runs command modules on their interval only,
