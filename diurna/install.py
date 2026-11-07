@@ -182,6 +182,17 @@ def _write(path, data):
         raise
 
 
+def _backup(path, data):
+    # NamedTemporaryFile creates its inode owner-only before any config bytes
+    # are written. Publish the complete copy without replacing a raced-in file
+    # or following a backup symlink; the temporary name is cleaned up on failure.
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="",
+                                     dir=path.parent, prefix=f".{path.name}.") as stream:
+        stream.write(data)
+        stream.flush()
+        os.link(stream.name, path)
+
+
 def _read(path):
     try:
         with path.open(encoding="utf-8", newline="") as stream:
@@ -404,7 +415,7 @@ def install(target, path=None, executable=None):
     if updated == original:
         return f"{target}: already installed in {path}"
     if not backup.exists():
-        backup.write_text(original, encoding="utf-8", newline="")
+        _backup(backup, original)
     _write(path, updated)
     return f"{target}: installed in {path} (backup {backup})"
 
